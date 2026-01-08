@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase";
-import Link from "next/link"; // J'ai ajouté l'import pour la navigation
+import Link from "next/link"; // Import indispensable pour la navigation
 
-// Définition du type Client
 type Client = {
   id: string;
   full_name: string;
@@ -15,7 +14,6 @@ type Client = {
 export default function Home() {
   const [clients, setClients] = useState<Client[]>([]);
 
-  // Chargement des données au démarrage
   useEffect(() => {
     const fetchClients = async () => {
       const { data, error } = await supabase.from("clients").select("*");
@@ -38,7 +36,6 @@ export default function Home() {
           <h1 className="text-3xl font-bold text-gray-900">
             Atelier CoutureOS 🧵
           </h1>
-          {/* LE CHANGEMENT EST ICI : Le bouton est devenu un vrai lien */}
           <Link
             href="/clients/new"
             className="bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition"
@@ -72,9 +69,15 @@ export default function Home() {
               </p>
 
               <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between">
-                <button className="text-sm text-blue-600 font-medium hover:underline">
+                {/* --- MODIFICATION ICI --- */}
+                {/* On utilise les `backticks` pour insérer l'ID dynamiquement */}
+                <Link
+                  href={`/clients/${client.id}`}
+                  className="text-sm text-blue-600 font-medium hover:underline"
+                >
                   Voir mesures
-                </button>
+                </Link>
+                {/* ------------------------ */}
               </div>
             </div>
           ))}
