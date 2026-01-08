@@ -5,7 +5,9 @@ import { supabase } from "../../lib/supabase";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 
-// Liste des mesures standards pour la couture
+// --- TYPES ---
+
+// 1. Définition des mesures standards
 const STANDARD_MEASUREMENTS = [
   { key: "poitrine", label: "Tour de Poitrine" },
   { key: "taille", label: "Tour de Taille" },
@@ -17,6 +19,16 @@ const STANDARD_MEASUREMENTS = [
   { key: "dos", label: "Longueur Dos" },
 ];
 
+// 2. Définition d'une Commande
+type Order = {
+  id: string;
+  title: string;
+  deadline: string;
+  status: string;
+  price: number;
+};
+
+// 3. Définition d'un Client
 type Client = {
   id: string;
   full_name: string;
@@ -29,68 +41,103 @@ type Client = {
 
 export default function ClientProfile() {
   const params = useParams();
+
+  // États (Mémoire de la page)
   const [client, setClient] = useState<Client | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Mode Édition : Si vrai, on affiche des champs de saisie. Si faux, on affiche le texte.
+  // États pour la modification des mesures
   const [isEditing, setIsEditing] = useState(false);
-
-  // Variable temporaire pour stocker les mesures pendant qu'on tape
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [tempMeasurements, setTempMeasurements] = useState<Record<string, any>>(
     {}
   );
 
-  // 1. Chargement du client
+  // --- CHARGEMENT DES DONNÉES ---
   useEffect(() => {
-    const fetchClient = async () => {
+    const fetchData = async () => {
       if (!params || !params.id) return;
 
-      const { data, error } = await supabase
+      // A. Récupérer le Client
+      const { data: clientData, error: clientError } = await supabase
         .from("clients")
         .select("*")
         .eq("id", params.id)
         .single();
 
-      if (error) {
-        console.error("Erreur:", error);
+      if (clientError) {
+        console.error("Erreur client:", clientError);
       } else {
-        setClient(data);
-        // On initialise les mesures temporaires avec ce qu'il y a dans la base (ou vide)
-        setTempMeasurements(data.measurements || {});
+        setClient(clientData);
+        setTempMeasurements(clientData.measurements || {});
       }
+
+      // B. Récupérer ses Commandes
+      const { data: ordersData, error: ordersError } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("client_id", params.id)
+        .order("created_at", { ascending: false });
+
+      if (ordersError) {
+        console.error("Erreur commandes:", ordersError);
+      } else {
+        setOrders(ordersData || []);
+      }
+
       setLoading(false);
     };
 
-    fetchClient();
+    fetchData();
   }, [params]);
 
-  // 2. Fonction pour sauvegarder les nouvelles mesures
-  const handleSave = async () => {
+  // --- SAUVEGARDE MESURES ---
+  const handleSaveMeasurements = async () => {
     if (!client) return;
-
-    // On envoie la mise à jour à Supabase
     const { error } = await supabase
       .from("clients")
-      .update({ measurements: tempMeasurements }) // On envoie le JSON complet
+      .update({ measurements: tempMeasurements })
       .eq("id", client.id);
 
     if (error) {
-      alert("Erreur lors de la sauvegarde !");
-      console.error(error);
+      alert("Erreur sauvegarde !");
     } else {
-      // Mise à jour locale (pour voir le résultat sans recharger)
       setClient({ ...client, measurements: tempMeasurements });
-      setIsEditing(false); // On quitte le mode édition
+      setIsEditing(false);
     }
   };
 
-  // 3. Fonction pour gérer la saisie dans les champs
+  // --- GESTION INPUT MESURES ---
   const handleInputChange = (key: string, value: string) => {
-    setTempMeasurements((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+    setTempMeasurements((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // --- ESTHÉTIQUE : COULEURS DES STATUTS ---
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "en_attente":
+        return "bg-gray-100 text-gray-600";
+      case "en_cours":
+        return "bg-blue-100 text-blue-700";
+      case "termine":
+        return "bg-green-100 text-green-700";
+      default:
+        return "bg-gray-100";
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case "en_attente":
+        return "En attente";
+      case "en_cours":
+        return "En cours";
+      case "termine":
+        return "Terminé";
+      default:
+        return status;
+    }
   };
 
   if (loading)
@@ -100,16 +147,17 @@ export default function ClientProfile() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-4xl mx-auto space-y-8">
+        {/* Navigation */}
         <Link
           href="/"
-          className="text-sm text-gray-500 hover:text-black mb-6 inline-block transition"
+          className="text-sm text-gray-500 hover:text-black inline-block transition"
         >
           ← Retour à l&apos;atelier
         </Link>
 
-        {/* --- CARTE D'IDENTITÉ --- */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 mb-6">
+        {/* --- 1. CARTE IDENTITÉ --- */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
           <div className="flex justify-between items-start">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">
@@ -131,101 +179,126 @@ export default function ClientProfile() {
           )}
         </div>
 
-        {/* --- ZONE DES MESURES --- */}
+        {/* --- 2. COMMANDES --- */}
+        <div className="flex justify-between items-end">
+          <h2 className="text-xl font-bold text-gray-900">Commandes 👗</h2>
+          <Link
+            href={`/clients/${client.id}/new-order`}
+            className="bg-black text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-800 transition"
+          >
+            + Nouvelle Commande
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          {orders.length > 0 ? (
+            orders.map((order) => (
+              <div
+                key={order.id}
+                className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center hover:shadow-md transition"
+              >
+                <div>
+                  <h3 className="font-bold text-gray-900 text-lg">
+                    {order.title}
+                  </h3>
+                  <p className="text-gray-500 text-sm mt-1">
+                    Livraison : {order.deadline || "Non définie"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                      order.status
+                    )}`}
+                  >
+                    {getStatusLabel(order.status)}
+                  </span>
+                  <p className="font-bold text-gray-900 mt-2">
+                    {order.price ? order.price.toLocaleString() + " FCFA" : "-"}
+                  </p>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="bg-white p-8 rounded-xl border border-gray-100 border-dashed text-center text-gray-400">
+              Aucune commande pour le moment.
+            </div>
+          )}
+        </div>
+
+        {/* --- 3. MESURES --- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          {/* Titre et Bouton Modifier */}
           <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              📏 Prise de Mesures
+              📏 Mesures
             </h2>
             {!isEditing && (
               <button
                 onClick={() => setIsEditing(true)}
-                className="text-sm bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-100 transition"
+                className="text-sm border border-gray-300 px-3 py-1 rounded-lg hover:bg-white transition"
               >
-                ✏️ Modifier
+                Modifier
               </button>
             )}
           </div>
-
           <div className="p-8">
             {isEditing ? (
-              /* --- MODE ÉDITION (Formulaire) --- */
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {STANDARD_MEASUREMENTS.map((m) => (
                   <div key={m.key}>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
-                      {m.label} (cm)
+                    {/* CORRECTION ICI : Ajout de htmlFor et id pour lier le label à l'input */}
+                    <label
+                      htmlFor={m.key}
+                      className="block text-xs font-bold text-gray-500 uppercase mb-1"
+                    >
+                      {m.label}
                     </label>
                     <input
+                      id={m.key}
                       type="number"
-                      className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-black outline-none"
+                      className="w-full p-2 border border-gray-300 rounded-md"
                       value={tempMeasurements[m.key] || ""}
                       onChange={(e) => handleInputChange(m.key, e.target.value)}
-                      placeholder="0"
                     />
                   </div>
                 ))}
-
-                {/* Boutons Sauvegarder / Annuler */}
-                <div className="col-span-1 md:col-span-2 flex gap-3 mt-4 pt-4 border-t border-gray-100">
+                <div className="col-span-full flex gap-3 pt-4">
                   <button
-                    onClick={handleSave}
-                    className="flex-1 bg-black text-white py-2 rounded-lg font-medium hover:bg-gray-800 transition"
+                    onClick={handleSaveMeasurements}
+                    className="flex-1 bg-black text-white py-2 rounded-lg"
                   >
-                    💾 Enregistrer les mesures
+                    Enregistrer
                   </button>
                   <button
                     onClick={() => setIsEditing(false)}
-                    className="px-6 py-2 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition"
+                    className="px-6 py-2 border rounded-lg"
                   >
                     Annuler
                   </button>
                 </div>
               </div>
-            ) : (
-              /* --- MODE AFFICHAGE (Lecture seule) --- */
-              <div>
-                {/* On vérifie s'il y a au moins une mesure enregistrée */}
-                {Object.keys(client.measurements || {}).length > 0 ? (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                    {STANDARD_MEASUREMENTS.map((m) => {
-                      const value = client.measurements?.[m.key];
-                      // On n'affiche que les mesures qui ont une valeur
-                      if (!value) return null;
-                      return (
-                        <div
-                          key={m.key}
-                          className="p-4 bg-gray-50 rounded-lg border border-gray-100 text-center"
-                        >
-                          <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">
-                            {m.label}
-                          </div>
-                          <div className="text-2xl font-bold text-gray-900">
-                            {value}{" "}
-                            <span className="text-sm font-normal text-gray-400">
-                              cm
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  // Si aucune mesure
-                  <div className="text-center py-10">
-                    <p className="text-gray-400 mb-4">
-                      Aucune mesure pour l&apos;instant.
-                    </p>
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      className="bg-black text-white px-6 py-2 rounded-lg hover:bg-gray-800 transition"
+            ) : Object.keys(client.measurements || {}).length > 0 ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                {STANDARD_MEASUREMENTS.map((m) => {
+                  const value = client.measurements?.[m.key];
+                  if (!value) return null;
+                  return (
+                    <div
+                      key={m.key}
+                      className="p-4 bg-gray-50 rounded-lg text-center"
                     >
-                      + Commencer la prise de mesures
-                    </button>
-                  </div>
-                )}
+                      <div className="text-xs text-gray-500 uppercase mb-1">
+                        {m.label}
+                      </div>
+                      <div className="text-xl font-bold text-gray-900">
+                        {value} cm
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+            ) : (
+              <p className="text-center text-gray-400">Pas de mesures.</p>
             )}
           </div>
         </div>
