@@ -1,21 +1,35 @@
 "use client";
 
-import { useState } from "react";
-import { supabase } from "../../lib/supabase"; // On remonte de 2 dossiers pour trouver la lib
+import { useState, useEffect } from "react";
+import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function NewClient() {
-  const router = useRouter(); // Pour rediriger l'utilisateur après l'enregistrement
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   // Les données du formulaire
   const [formData, setFormData] = useState({
     full_name: "",
     phone: "",
-    city: "Cotonou", // Valeur par défaut
+    city: "Cotonou",
     notes: "",
   });
+
+  // 1. SÉCURITÉ : On vérifie que l'utilisateur est connecté
+  useEffect(() => {
+    const checkUser = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        // Pas connecté ? Hop, au login !
+        router.push("/login");
+      }
+    };
+    checkUser();
+  }, [router]);
 
   // Fonction qui gère les changements dans les champs
   const handleChange = (
@@ -29,29 +43,40 @@ export default function NewClient() {
     });
   };
 
-  // Fonction qui envoie les données à Supabase quand on clique sur "Enregistrer"
+  // Fonction d'envoi
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); // Empêche la page de se recharger
+    e.preventDefault();
     setLoading(true);
 
+    // 2. RÉCUPÉRATION DE L'ID UTILISATEUR
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      alert("Session expirée, veuillez vous reconnecter.");
+      router.push("/login");
+      return;
+    }
+
+    // 3. ENVOI AVEC L'ÉTIQUETTE DU PROPRIÉTAIRE (user_id)
     const { error } = await supabase.from("clients").insert([
       {
         full_name: formData.full_name,
         phone: formData.phone,
         city: formData.city,
-        notes: formData.notes,
+        notes: formData.notes, // Assure-toi que cette colonne existe dans ta table Supabase !
+        user_id: session.user.id, // <--- C'EST LA CLÉ DE LA SÉCURITÉ ICI
       },
     ]);
 
     if (error) {
-      // Note: Dans une string JavaScript classique ("..."), on peut utiliser l'apostrophe normale.
-      alert("Erreur lors de l'enregistrement !");
+      alert("Erreur lors de l'enregistrement ! " + error.message);
       console.error(error);
       setLoading(false);
     } else {
-      // Si c'est bon, on retourne à l'accueil
       router.push("/");
-      router.refresh(); // Rafraîchit les données de l'accueil
+      router.refresh();
     }
   };
 
@@ -65,7 +90,6 @@ export default function NewClient() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Nom Complet */}
           <div>
-            {/* CORRECTION: Ajout de htmlFor et id pour lier le label à l'input */}
             <label
               htmlFor="full_name"
               className="block text-sm font-medium text-gray-700 mb-1"
@@ -105,7 +129,6 @@ export default function NewClient() {
 
           {/* Ville */}
           <div>
-            {/* C'est ici qu'était l'erreur : le select avait besoin d'un id */}
             <label
               htmlFor="city"
               className="block text-sm font-medium text-gray-700 mb-1"

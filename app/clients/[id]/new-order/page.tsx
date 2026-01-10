@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 // CORRECTION DÉFINITIVE : 3 fois "../" pour remonter à la racine de 'app'
 import { supabase } from "../../../lib/supabase";
 import { useParams, useRouter } from "next/navigation";
@@ -19,6 +19,19 @@ export default function NewOrder() {
     status: "en_attente",
   });
 
+  // 1. SÉCURITÉ : Vérification de la session au chargement
+  useEffect(() => {
+    const checkUser = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        router.push("/login");
+      }
+    };
+    checkUser();
+  }, [router]);
+
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
@@ -36,22 +49,35 @@ export default function NewOrder() {
 
     if (!params?.id) return;
 
+    // 2. RÉCUPÉRATION DU PROPRIÉTAIRE
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      alert("Session expirée. Veuillez vous reconnecter.");
+      router.push("/login");
+      return;
+    }
+
     // Conversion du prix en nombre (ou 0 si vide)
     const priceInt = formData.price ? parseInt(formData.price) : 0;
 
+    // 3. ENVOI AVEC L'ÉTIQUETTE user_id
     const { error } = await supabase.from("orders").insert([
       {
-        client_id: params.id, // Le lien magique avec le client !
+        client_id: params.id,
         title: formData.title,
         price: priceInt,
         deadline: formData.deadline,
         description: formData.description,
         status: formData.status,
+        user_id: session.user.id, // <--- INDISPENSABLE POUR LA SÉCURITÉ
       },
     ]);
 
     if (error) {
-      alert("Erreur lors de la création de la commande !");
+      alert("Erreur lors de la création de la commande ! " + error.message);
       console.error(error);
       setLoading(false);
     } else {
