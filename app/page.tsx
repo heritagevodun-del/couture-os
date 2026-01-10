@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase";
-import Link from "next/link"; // Import indispensable pour la navigation
+import Link from "next/link";
 
 type Client = {
   id: string;
@@ -36,12 +36,25 @@ export default function Home() {
           <h1 className="text-3xl font-bold text-gray-900">
             Atelier CoutureOS 🧵
           </h1>
-          <Link
-            href="/clients/new"
-            className="bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition"
-          >
-            + Nouveau Client
-          </Link>
+
+          {/* Zone des boutons */}
+          <div className="flex gap-3">
+            {/* NOUVEAU : Bouton Catalogue */}
+            <Link
+              href="/catalogue"
+              className="bg-white text-black border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 transition"
+            >
+              📸 Catalogue
+            </Link>
+
+            {/* Bouton Nouveau Client */}
+            <Link
+              href="/clients/new"
+              className="bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+            >
+              + Nouveau Client
+            </Link>
+          </div>
         </div>
 
         {/* Grille des clients */}
@@ -69,15 +82,12 @@ export default function Home() {
               </p>
 
               <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between">
-                {/* --- MODIFICATION ICI --- */}
-                {/* On utilise les `backticks` pour insérer l'ID dynamiquement */}
                 <Link
                   href={`/clients/${client.id}`}
                   className="text-sm text-blue-600 font-medium hover:underline"
                 >
                   Voir mesures
                 </Link>
-                {/* ------------------------ */}
               </div>
             </div>
           ))}
