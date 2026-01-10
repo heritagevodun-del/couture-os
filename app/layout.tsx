@@ -1,22 +1,36 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ["latin"] });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
+// --- CONFIGURATION DU PARTAGE (SEO & RÉSEAUX SOCIAUX) ---
 export const metadata: Metadata = {
-  title: "CoutureOS - Gestion Atelier",
-  // J'ai retiré la mention "Bénin & France" pour viser l'international
+  // Le titre dans l'onglet du navigateur
+  title: "Atelier CoutureOS",
+  // La description pour Google
   description:
-    "Le système d'exploitation ultime pour les couturiers professionnels.",
+    "L'application de gestion complète pour couturiers et stylistes. Clients, Mesures, Commandes et Catalogue.",
+
+  // Ton URL officielle (Indispensable pour que l'image s'affiche sur WhatsApp)
+  metadataBase: new URL("https://couture-os.vercel.app"),
+
+  openGraph: {
+    title: "Atelier CoutureOS 🧵",
+    description:
+      "Gérez votre atelier de couture simplement : Mesures, Commandes et Catalogue client.",
+    // L'image qui s'affichera lors du partage (ton logo)
+    images: [
+      {
+        url: "/icon.png",
+        width: 800,
+        height: 800,
+        alt: "Logo CoutureOS",
+      },
+    ],
+    locale: "fr_FR",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
@@ -25,15 +39,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    /* NOTE: On garde "fr" pour l'instant car le texte de l'app sera en français.
-      Nous passerons ce paramètre en dynamique lors de la phase d'internationalisation.
-    */
     <html lang="fr">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }
