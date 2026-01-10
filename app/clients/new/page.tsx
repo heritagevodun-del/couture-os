@@ -146,6 +146,10 @@ export default function NewClient() {
               <option value="Porto-Novo">Porto-Novo</option>
               <option value="Parakou">Parakou</option>
               <option value="Abomey">Abomey</option>
+              <option value="Abomey">Ouidah</option>
+              <option value="Abomey">Abidjan</option>
+              <option value="Abomey">Accra</option>
+              <option value="Abomey">Douala</option>
               <option value="Paris">Paris</option>
               <option value="Autre">Autre</option>
             </select>
