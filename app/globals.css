@@ -1,3 +1,12 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* --- AJOUT POUR LE LOGO COUTUREOS --- */
+.logo-bouton-bg {
+  background-image: 
+    radial-gradient(circle at 35% 35%, transparent 2px, #1a1a1a 3px), 
+    radial-gradient(circle at 65% 35%, transparent 2px, #1a1a1a 3px), 
+    radial-gradient(circle at 35% 65%, transparent 2px, #1a1a1a 3px), 
+    radial-gradient(circle at 65% 65%, transparent 2px, #1a1a1a 3px);
+}

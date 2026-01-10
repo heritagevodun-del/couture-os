@@ -31,26 +31,35 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-4xl mx-auto">
-        {/* En-tête de la page */}
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Atelier CoutureOS 🧵
-          </h1>
+        {/* --- EN-TÊTE RESPONSIVE --- */}
+        <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-6">
+          {/* LOGO BOUTON + TITRE */}
+          <div className="flex items-center gap-4">
+            {/* LE LOGO BOUTON */}
+            {/* CORRECTION : On a ajouté 'logo-bouton-bg' et supprimé l'attribut style */}
+            <div className="logo-bouton-bg relative w-12 h-12 bg-[#1a1a1a] rounded-full border-2 border-[#D4AF37] shadow-md flex items-center justify-center flex-shrink-0">
+              {/* L'Aiguille */}
+              <div className="absolute w-[140%] h-[3px] bg-gradient-to-r from-gray-200 to-gray-400 -rotate-45 rounded-full shadow-sm flex items-center justify-end pr-[3px]">
+                {/* Le Chas (le trou de l'aiguille) */}
+                <div className="w-[5px] h-[1.5px] bg-[#1a1a1a] rounded-full"></div>
+              </div>
+            </div>
 
-          {/* Zone des boutons */}
-          <div className="flex gap-3">
-            {/* NOUVEAU : Bouton Catalogue */}
+            <h1 className="text-2xl font-bold text-gray-900">CoutureOS</h1>
+          </div>
+
+          {/* BOUTONS */}
+          <div className="flex gap-3 w-full md:w-auto">
             <Link
               href="/catalogue"
-              className="bg-white text-black border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 transition"
+              className="flex-1 md:flex-none text-center bg-white text-black border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 transition"
             >
               📸 Catalogue
             </Link>
 
-            {/* Bouton Nouveau Client */}
             <Link
               href="/clients/new"
-              className="bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+              className="flex-1 md:flex-none text-center bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition whitespace-nowrap"
             >
               + Nouveau Client
             </Link>
