@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { useParams } from "next/navigation"; // J'ai retiré useRouter qui ne servait pas
+import { useParams } from "next/navigation";
 import Link from "next/link";
 
 // --- 1. CONFIGURATION DES MESURES ---
@@ -23,7 +23,6 @@ type Client = {
   phone: string;
   city: string;
   notes: string;
-  // CORRECTION 1 : On remplace 'any' par un type précis
   measurements: Record<string, string> | null;
 };
 
@@ -37,7 +36,6 @@ type Order = {
 
 export default function ClientDetails() {
   const params = useParams();
-  // CORRECTION 3 : Suppression de 'const router = useRouter()' car inutile ici
 
   // Données
   const [client, setClient] = useState<Client | null>(null);
@@ -45,11 +43,13 @@ export default function ClientDetails() {
   const [loading, setLoading] = useState(true);
 
   // Édition des mesures
-  const [isEditing, setIsEditing] = useState(false);
-  // CORRECTION 1 (bis) : Typage précis pour l'état
+  const [isEditingMeasurements, setIsEditingMeasurements] = useState(false);
   const [tempMeasurements, setTempMeasurements] = useState<
     Record<string, string>
   >({});
+
+  // --- NOUVEAU : ÉDITION COMMANDE (MODAL) ---
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null); // La commande qu'on modifie
 
   // --- CHARGEMENT ---
   useEffect(() => {
@@ -67,7 +67,6 @@ export default function ClientDetails() {
         console.error("Erreur client:", clientError);
       } else {
         setClient(clientData);
-        // On initialise les mesures temporaires avec celles existantes
         setTempMeasurements(clientData.measurements || {});
       }
 
@@ -88,7 +87,7 @@ export default function ClientDetails() {
   }, [params?.id]);
 
   // --- LOGIQUE MESURES ---
-  const handleInputChange = (key: string, value: string) => {
+  const handleMeasurementChange = (key: string, value: string) => {
     setTempMeasurements((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -103,7 +102,53 @@ export default function ClientDetails() {
       alert("Erreur lors de la sauvegarde !");
     } else {
       setClient({ ...client, measurements: tempMeasurements });
-      setIsEditing(false);
+      setIsEditingMeasurements(false);
+    }
+  };
+
+  // --- NOUVEAU : LOGIQUE MODIFICATION COMMANDES ---
+
+  // 1. Sauvegarder les modifications (Statut, Prix, Titre)
+  const handleUpdateOrder = async () => {
+    if (!editingOrder) return;
+
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        title: editingOrder.title,
+        status: editingOrder.status,
+        price: editingOrder.price,
+      })
+      .eq("id", editingOrder.id);
+
+    if (error) {
+      alert("Erreur mise à jour commande : " + error.message);
+    } else {
+      // Mise à jour locale de la liste
+      setOrders((prev) =>
+        prev.map((o) => (o.id === editingOrder.id ? editingOrder : o))
+      );
+      setEditingOrder(null); // Fermer le modal
+    }
+  };
+
+  // 2. Supprimer la commande
+  const handleDeleteOrder = async () => {
+    if (!editingOrder) return;
+    const confirm = window.confirm("Supprimer cette commande définitivement ?");
+    if (!confirm) return;
+
+    const { error } = await supabase
+      .from("orders")
+      .delete()
+      .eq("id", editingOrder.id);
+
+    if (error) {
+      alert("Erreur suppression : " + error.message);
+    } else {
+      // Retirer de la liste locale
+      setOrders((prev) => prev.filter((o) => o.id !== editingOrder.id));
+      setEditingOrder(null); // Fermer le modal
     }
   };
 
@@ -135,8 +180,7 @@ export default function ClientDetails() {
           href="/"
           className="text-gray-500 hover:text-black flex items-center gap-2 text-sm font-medium"
         >
-          {/* CORRECTION 2 : Utilisation de &apos; pour l'apostrophe */}← Retour
-          à l&apos;atelier
+          ← Retour à l&apos;atelier
         </Link>
       </div>
 
@@ -178,7 +222,6 @@ export default function ClientDetails() {
               <p className="text-xs text-yellow-600 font-bold uppercase mb-1">
                 Note personnelle
               </p>
-              {/* CORRECTION 2 : Utilisation de &quot; pour les guillemets */}
               <p className="text-sm text-gray-800 italic">
                 &quot;{client.notes}&quot;
               </p>
@@ -186,7 +229,7 @@ export default function ClientDetails() {
           )}
         </div>
 
-        {/* --- 2. COMMANDES --- */}
+        {/* --- 2. COMMANDES (MODIFIABLE) --- */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -214,10 +257,11 @@ export default function ClientDetails() {
               orders.map((order) => (
                 <div
                   key={order.id}
-                  className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center"
+                  onClick={() => setEditingOrder(order)}
+                  className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center cursor-pointer hover:border-black transition group"
                 >
                   <div>
-                    <h3 className="font-semibold text-gray-900">
+                    <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition">
                       {order.title}
                     </h3>
                     <p className="text-sm text-gray-500 mt-1">
@@ -245,6 +289,7 @@ export default function ClientDetails() {
                     <p className="font-bold text-gray-900">
                       {order.price.toLocaleString()} F
                     </p>
+                    <p className="text-xs text-gray-400 mt-1">Modifier ›</p>
                   </div>
                 </div>
               ))
@@ -258,9 +303,9 @@ export default function ClientDetails() {
             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
               📏 Mesures
             </h2>
-            {!isEditing && (
+            {!isEditingMeasurements && (
               <button
-                onClick={() => setIsEditing(true)}
+                onClick={() => setIsEditingMeasurements(true)}
                 className="text-sm bg-white border border-gray-300 px-3 py-1.5 rounded-lg font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition"
               >
                 Modifier
@@ -269,11 +314,12 @@ export default function ClientDetails() {
           </div>
 
           <div className="p-6">
-            {isEditing ? (
-              // --- MODE ÉDITION ---
+            {isEditingMeasurements ? (
+              // MODE ÉDITION MESURES
               <div className="grid grid-cols-2 gap-4">
                 {STANDARD_MEASUREMENTS.map((m) => (
                   <div key={m.key}>
+                    {/* CORRECTION : L'input a maintenant un ID qui correspond au htmlFor du label */}
                     <label
                       htmlFor={m.key}
                       className="block text-xs font-bold text-gray-500 uppercase mb-1"
@@ -287,7 +333,7 @@ export default function ClientDetails() {
                         className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none font-medium"
                         value={tempMeasurements[m.key] || ""}
                         onChange={(e) =>
-                          handleInputChange(m.key, e.target.value)
+                          handleMeasurementChange(m.key, e.target.value)
                         }
                         placeholder="0"
                       />
@@ -299,7 +345,7 @@ export default function ClientDetails() {
                 ))}
                 <div className="col-span-2 flex gap-3 pt-4 mt-2 border-t border-gray-100">
                   <button
-                    onClick={() => setIsEditing(false)}
+                    onClick={() => setIsEditingMeasurements(false)}
                     className="flex-1 py-3 text-gray-600 font-medium bg-gray-100 rounded-xl hover:bg-gray-200 transition"
                   >
                     Annuler
@@ -313,7 +359,7 @@ export default function ClientDetails() {
                 </div>
               </div>
             ) : (
-              // --- MODE AFFICHAGE ---
+              // MODE AFFICHAGE MESURES
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {STANDARD_MEASUREMENTS.map((m) => {
                   const value = client.measurements?.[m.key];
@@ -336,6 +382,107 @@ export default function ClientDetails() {
           </div>
         </div>
       </div>
+
+      {/* --- MODAL DE MODIFICATION DE COMMANDE --- */}
+      {editingOrder && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <h3 className="text-lg font-bold mb-4 border-b pb-2">
+              Modifier la commande
+            </h3>
+
+            <div className="space-y-4">
+              {/* Titre - CORRECTION DES LABELS */}
+              <div>
+                <label
+                  htmlFor="edit-title"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Titre
+                </label>
+                <input
+                  id="edit-title"
+                  type="text"
+                  className="w-full border rounded-lg p-2"
+                  value={editingOrder.title}
+                  onChange={(e) =>
+                    setEditingOrder({ ...editingOrder, title: e.target.value })
+                  }
+                />
+              </div>
+
+              {/* Prix - CORRECTION DES LABELS */}
+              <div>
+                <label
+                  htmlFor="edit-price"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Prix (FCFA)
+                </label>
+                <input
+                  id="edit-price"
+                  type="number"
+                  className="w-full border rounded-lg p-2"
+                  value={editingOrder.price}
+                  onChange={(e) =>
+                    setEditingOrder({
+                      ...editingOrder,
+                      price: parseInt(e.target.value) || 0,
+                    })
+                  }
+                />
+              </div>
+
+              {/* Statut - CORRECTION DES LABELS */}
+              <div>
+                <label
+                  htmlFor="edit-status"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Statut
+                </label>
+                <select
+                  id="edit-status"
+                  className="w-full border rounded-lg p-2 bg-white"
+                  value={editingOrder.status}
+                  onChange={(e) =>
+                    setEditingOrder({ ...editingOrder, status: e.target.value })
+                  }
+                >
+                  <option value="en_attente">🟡 En attente</option>
+                  <option value="en_cours">🔵 En cours</option>
+                  <option value="termine">🟢 Terminé</option>
+                </select>
+              </div>
+
+              {/* Boutons d'action */}
+              <div className="flex flex-col gap-3 pt-4">
+                <button
+                  onClick={handleUpdateOrder}
+                  className="w-full bg-black text-white font-bold py-3 rounded-xl hover:bg-gray-800"
+                >
+                  Enregistrer les modifications
+                </button>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setEditingOrder(null)}
+                    className="flex-1 bg-gray-100 text-gray-700 font-medium py-3 rounded-xl hover:bg-gray-200"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={handleDeleteOrder}
+                    className="flex-1 bg-red-50 text-red-600 font-medium py-3 rounded-xl hover:bg-red-100 border border-red-100"
+                  >
+                    Supprimer
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
