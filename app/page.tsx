@@ -64,6 +64,17 @@ export default function Home() {
     }
   };
 
+  // --- 3. FONCTION DE DÉCONNEXION (Nouveau) ---
+  const handleLogout = async () => {
+    const isConfirmed = window.confirm(
+      "Voulez-vous vraiment vous déconnecter ?"
+    );
+    if (isConfirmed) {
+      await supabase.auth.signOut();
+      router.push("/login");
+    }
+  };
+
   return (
     <main className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-4xl mx-auto">
@@ -80,7 +91,15 @@ export default function Home() {
           </div>
 
           {/* BOUTONS */}
-          <div className="flex gap-3 w-full md:w-auto">
+          <div className="flex flex-wrap justify-center gap-3 w-full md:w-auto">
+            {/* Bouton Déconnexion (Rouge) */}
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 rounded-lg bg-red-50 text-red-600 border border-red-100 font-medium hover:bg-red-100 transition text-sm flex items-center gap-2"
+            >
+              🚪 Sortir
+            </button>
+
             <Link
               href="/catalogue"
               className="flex-1 md:flex-none text-center bg-white text-black border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 transition"
@@ -128,10 +147,10 @@ export default function Home() {
 
               <div className="flex items-start justify-between pr-8">
                 <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
-                  {client.full_name.charAt(0)}
+                  {client.full_name.charAt(0).toUpperCase()}
                 </div>
                 <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded-full">
-                  {client.city}
+                  {client.city || "Ville ?"}
                 </span>
               </div>
 
@@ -156,9 +175,9 @@ export default function Home() {
 
           {/* Message si vide */}
           {clients.length === 0 && (
-            <p className="col-span-3 text-center text-gray-400 py-10">
-              Chargement des clients...
-            </p>
+            <div className="col-span-full text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
+              <p className="text-gray-400">Aucun client pour le moment.</p>
+            </div>
           )}
         </div>
       </div>
