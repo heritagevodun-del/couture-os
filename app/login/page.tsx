@@ -263,8 +263,8 @@ export default function LoginPage() {
             className="text-sm text-gray-600 hover:text-black font-medium underline-offset-2 hover:underline"
           >
             {isLogin
-              ? "Pas encore de compte ? S&apos;inscrire"
-              : "J&apos;ai déjà un compte, se connecter"}
+              ? "Pas encore de compte ? S'inscrire"
+              : "J'ai déjà un compte, se connecter"}
           </button>
         </div>
       </div>
