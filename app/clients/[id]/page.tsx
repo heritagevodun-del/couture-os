@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation"; // Ajout de useRouter
 import Link from "next/link";
+import { Trash2 } from "lucide-react"; // Ajout de l'icône poubelle
 
 // --- 1. CONFIGURATION DES MESURES ---
 const STANDARD_MEASUREMENTS = [
@@ -36,6 +37,7 @@ type Order = {
 
 export default function ClientDetails() {
   const params = useParams();
+  const router = useRouter(); // Pour la redirection après suppression
 
   // Données
   const [client, setClient] = useState<Client | null>(null);
@@ -49,7 +51,7 @@ export default function ClientDetails() {
   >({});
 
   // --- NOUVEAU : ÉDITION COMMANDE (MODAL) ---
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null); // La commande qu'on modifie
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   // --- CHARGEMENT ---
   useEffect(() => {
@@ -86,6 +88,47 @@ export default function ClientDetails() {
     fetchClientData();
   }, [params?.id]);
 
+  // --- LOGIQUE SUPPRESSION CLIENT (NOUVEAU) ---
+  const handleDeleteClient = async () => {
+    if (!client) return;
+
+    // 1. Confirmation de sécurité
+    const confirm = window.confirm(
+      "🛑 ATTENTION : Voulez-vous vraiment supprimer ce client ?\n\nCette action est irréversible et effacera également tout l'historique de ses commandes."
+    );
+    if (!confirm) return;
+
+    setLoading(true);
+
+    // 2. Supprimer d'abord les commandes liées (Nettoyage)
+    const { error: ordersError } = await supabase
+      .from("orders")
+      .delete()
+      .eq("client_id", client.id);
+
+    if (ordersError) {
+      alert(
+        "Erreur lors de la suppression des commandes : " + ordersError.message
+      );
+      setLoading(false);
+      return;
+    }
+
+    // 3. Supprimer le client
+    const { error: clientError } = await supabase
+      .from("clients")
+      .delete()
+      .eq("id", client.id);
+
+    if (clientError) {
+      alert("Erreur lors de la suppression du client : " + clientError.message);
+      setLoading(false);
+    } else {
+      // 4. Redirection vers l'accueil
+      router.push("/");
+    }
+  };
+
   // --- LOGIQUE MESURES ---
   const handleMeasurementChange = (key: string, value: string) => {
     setTempMeasurements((prev) => ({ ...prev, [key]: value }));
@@ -106,9 +149,7 @@ export default function ClientDetails() {
     }
   };
 
-  // --- NOUVEAU : LOGIQUE MODIFICATION COMMANDES ---
-
-  // 1. Sauvegarder les modifications (Statut, Prix, Titre)
+  // --- LOGIQUE MODIFICATION COMMANDES ---
   const handleUpdateOrder = async () => {
     if (!editingOrder) return;
 
@@ -124,15 +165,13 @@ export default function ClientDetails() {
     if (error) {
       alert("Erreur mise à jour commande : " + error.message);
     } else {
-      // Mise à jour locale de la liste
       setOrders((prev) =>
         prev.map((o) => (o.id === editingOrder.id ? editingOrder : o))
       );
-      setEditingOrder(null); // Fermer le modal
+      setEditingOrder(null);
     }
   };
 
-  // 2. Supprimer la commande
   const handleDeleteOrder = async () => {
     if (!editingOrder) return;
     const confirm = window.confirm("Supprimer cette commande définitivement ?");
@@ -146,9 +185,8 @@ export default function ClientDetails() {
     if (error) {
       alert("Erreur suppression : " + error.message);
     } else {
-      // Retirer de la liste locale
       setOrders((prev) => prev.filter((o) => o.id !== editingOrder.id));
-      setEditingOrder(null); // Fermer le modal
+      setEditingOrder(null);
     }
   };
 
@@ -175,7 +213,7 @@ export default function ClientDetails() {
   return (
     <main className="min-h-screen bg-gray-50 pb-20">
       {/* Navigation */}
-      <div className="bg-white px-6 py-4 border-b border-gray-100 flex items-center sticky top-0 z-10">
+      <div className="bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 z-10">
         <Link
           href="/"
           className="text-gray-500 hover:text-black flex items-center gap-2 text-sm font-medium"
@@ -185,8 +223,17 @@ export default function ClientDetails() {
       </div>
 
       <div className="max-w-xl mx-auto p-6 flex flex-col gap-6">
-        {/* --- 1. CARTE PROFIL --- */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col items-center text-center">
+        {/* --- 1. CARTE PROFIL (Modifiée avec bouton supprimer) --- */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col items-center text-center relative">
+          {/* BOUTON SUPPRIMER CLIENT (NOUVEAU) */}
+          <button
+            onClick={handleDeleteClient}
+            className="absolute top-4 right-4 text-gray-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all"
+            title="Supprimer ce client"
+          >
+            <Trash2 size={20} />
+          </button>
+
           <div className="w-24 h-24 bg-black text-white rounded-full flex items-center justify-center text-3xl font-bold shadow-md mb-4 border-4 border-gray-50">
             {getInitials(client.full_name)}
           </div>
@@ -229,7 +276,7 @@ export default function ClientDetails() {
           )}
         </div>
 
-        {/* --- 2. COMMANDES (MODIFIABLE) --- */}
+        {/* --- 2. COMMANDES --- */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -319,7 +366,6 @@ export default function ClientDetails() {
               <div className="grid grid-cols-2 gap-4">
                 {STANDARD_MEASUREMENTS.map((m) => (
                   <div key={m.key}>
-                    {/* CORRECTION : L'input a maintenant un ID qui correspond au htmlFor du label */}
                     <label
                       htmlFor={m.key}
                       className="block text-xs font-bold text-gray-500 uppercase mb-1"
@@ -392,7 +438,7 @@ export default function ClientDetails() {
             </h3>
 
             <div className="space-y-4">
-              {/* Titre - CORRECTION DES LABELS */}
+              {/* Titre */}
               <div>
                 <label
                   htmlFor="edit-title"
@@ -411,7 +457,7 @@ export default function ClientDetails() {
                 />
               </div>
 
-              {/* Prix - CORRECTION DES LABELS */}
+              {/* Prix */}
               <div>
                 <label
                   htmlFor="edit-price"
@@ -433,7 +479,7 @@ export default function ClientDetails() {
                 />
               </div>
 
-              {/* Statut - CORRECTION DES LABELS */}
+              {/* Statut */}
               <div>
                 <label
                   htmlFor="edit-status"
