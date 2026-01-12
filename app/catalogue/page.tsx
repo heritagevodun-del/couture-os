@@ -3,6 +3,15 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import Link from "next/link";
+import {
+  Trash2,
+  Upload,
+  X,
+  Camera,
+  Image as ImageIcon,
+  Loader2,
+  ArrowLeft,
+} from "lucide-react";
 
 type Model = {
   id: string;
@@ -11,7 +20,7 @@ type Model = {
   image_url: string;
 };
 
-// 🔒 CONFIGURATION : LIMITE DE PHOTOS PAR UTILISATEUR
+// 🔒 CONFIGURATION : LIMITE DE PHOTOS
 const MAX_PHOTOS = 12;
 
 export default function Catalogue() {
@@ -20,13 +29,15 @@ export default function Catalogue() {
   const [file, setFile] = useState<File | null>(null);
   const [newTitle, setNewTitle] = useState("");
 
+  // 🔍 État pour gérer l'image ouverte en grand (Lightbox)
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
   // 1. Charger le catalogue au démarrage
   useEffect(() => {
     fetchModels();
   }, []);
 
   const fetchModels = async () => {
-    // Supabase va filtrer automatiquement grâce aux règles RLS qu'on va ajouter après
     const { data, error } = await supabase
       .from("models")
       .select("*")
@@ -41,10 +52,10 @@ export default function Catalogue() {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
 
-      // Limite : 1 Mo (1024 * 1024 octets)
-      if (selectedFile.size > 1024 * 1024) {
+      // Limite : 2 Mo
+      if (selectedFile.size > 2 * 1024 * 1024) {
         alert(
-          "⚠️ Image trop lourde ! Merci de choisir une photo de moins de 1 Mo."
+          "⚠️ Image trop lourde ! Merci de choisir une photo de moins de 2 Mo."
         );
         e.target.value = "";
         setFile(null);
@@ -58,11 +69,8 @@ export default function Catalogue() {
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 🛑 VERIFICATION DU QUOTA (Nouveau)
     if (models.length >= MAX_PHOTOS) {
-      return alert(
-        `⚠️ Vous avez atteint la limite de ${MAX_PHOTOS} photos. Supprimez-en une pour libérer de la place.`
-      );
+      return alert(`⚠️ Limite de ${MAX_PHOTOS} photos atteinte.`);
     }
 
     if (!file || !newTitle)
@@ -71,24 +79,20 @@ export default function Catalogue() {
     setUploading(true);
 
     try {
-      // A. Nom de fichier unique
       const fileExt = file.name.split(".").pop();
       const fileName = `${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      // B. Envoi de l'image
       const { error: uploadError } = await supabase.storage
         .from("catalogue")
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
-      // C. URL publique
       const {
         data: { publicUrl },
       } = supabase.storage.from("catalogue").getPublicUrl(filePath);
 
-      // D. Enregistrement BDD
       const { error: dbError } = await supabase.from("models").insert([
         {
           title: newTitle,
@@ -99,11 +103,10 @@ export default function Catalogue() {
 
       if (dbError) throw dbError;
 
-      // E. Reset
-      alert("Modèle ajouté avec succès ! ✨");
       setFile(null);
       setNewTitle("");
 
+      // Reset visuel de l'input
       const fileInput = document.getElementById(
         "model-file"
       ) as HTMLInputElement;
@@ -118,165 +121,240 @@ export default function Catalogue() {
     }
   };
 
-  // 🗑️ NOUVEAU : Fonction pour supprimer une photo
-  const handleDelete = async (id: string, imageUrl: string) => {
+  // Fonction suppression
+  const handleDelete = async (
+    e: React.MouseEvent,
+    id: string,
+    imageUrl: string
+  ) => {
+    e.stopPropagation(); // Empêche d'ouvrir la photo quand on clique sur la poubelle
+
     if (!confirm("Voulez-vous vraiment supprimer ce modèle ?")) return;
 
-    // 1. Supprimer de la base de données
     const { error } = await supabase.from("models").delete().eq("id", id);
-
     if (error) {
       alert("Erreur lors de la suppression");
       return;
     }
 
-    // 2. (Optionnel) Nettoyage du fichier dans le Storage
-    // On essaie de récupérer le nom du fichier depuis l'URL
     const fileName = imageUrl.split("/").pop();
     if (fileName) {
       await supabase.storage.from("catalogue").remove([fileName]);
     }
 
-    fetchModels(); // Rafraîchir la liste
+    fetchModels();
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-gray-50 p-6 md:p-8">
       <div className="max-w-6xl mx-auto">
-        {/* En-tête avec Compteur */}
-        <div className="flex justify-between items-center mb-8">
+        {/* --- HEADER --- */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
             <Link
               href="/"
-              className="text-sm text-gray-500 hover:text-black transition"
+              className="text-sm text-gray-500 hover:text-black transition flex items-center gap-1"
             >
-              ← Retour à l&apos;atelier
+              <ArrowLeft size={16} /> Retour à l&apos;atelier
             </Link>
-            <h1 className="text-3xl font-bold text-gray-900 mt-2">
-              Catalogue & Modèles 📸
+            <h1 className="text-3xl font-bold text-gray-900 mt-2 flex items-center gap-2">
+              Catalogue & Modèles <ImageIcon className="text-[#D4AF37]" />
             </h1>
           </div>
 
-          {/* INDICATEUR DE QUOTA */}
-          <div className="text-right bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
-            <span
+          <div className="bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
+            <div
               className={`text-2xl font-bold ${
                 models.length >= MAX_PHOTOS ? "text-red-500" : "text-black"
               }`}
             >
-              {models.length} / {MAX_PHOTOS}
-            </span>
-            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">
-              photos
+              {models.length}
+              <span className="text-gray-300 text-lg">/</span>
+              {MAX_PHOTOS}
+            </div>
+            <p className="text-xs text-gray-400 font-medium uppercase leading-tight">
+              Photos
+              <br />
+              Stockées
             </p>
           </div>
         </div>
 
-        {/* --- ZONE D'AJOUT (Masquée si quota atteint) --- */}
+        {/* --- ZONE D'AJOUT --- */}
         {models.length < MAX_PHOTOS ? (
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-10">
-            <h2 className="font-bold text-lg mb-4">
-              Ajouter un nouveau modèle
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-10 transition-all hover:shadow-md">
+            <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
+              <Upload size={20} /> Ajouter un nouveau modèle
             </h2>
+
             <form
               onSubmit={handleUpload}
-              className="flex flex-col md:flex-row gap-4 items-end"
+              className="flex flex-col md:flex-row gap-6 items-stretch"
             >
-              <div className="flex-1 w-full">
-                <label
-                  htmlFor="model-title"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
+              {/* INPUT 1 : TITRE */}
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Titre du modèle
                 </label>
                 <input
-                  id="model-title"
                   type="text"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   placeholder="Ex: Robe soirée rouge"
-                  className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-black"
+                  className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-black transition-all bg-gray-50 focus:bg-white"
                 />
               </div>
-              <div className="flex-1 w-full">
-                <label
-                  htmlFor="model-file"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Photo{" "}
-                  <span className="text-xs text-gray-400 font-normal">
-                    (Max 1 Mo)
-                  </span>
+
+              {/* INPUT 2 : FICHIER (STYLE DRAG & DROP) */}
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Photo du vêtement
                 </label>
-                <input
-                  id="model-file"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                />
+                <div className="relative group">
+                  <input
+                    id="model-file"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    aria-label="Choisir une photo"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+                  <div
+                    className={`border-2 border-dashed rounded-xl p-3 flex items-center justify-center gap-3 transition-colors ${
+                      file
+                        ? "border-green-500 bg-green-50"
+                        : "border-gray-300 group-hover:border-gray-400 bg-gray-50"
+                    }`}
+                  >
+                    <div
+                      className={`p-2 rounded-full ${
+                        file
+                          ? "bg-green-100 text-green-600"
+                          : "bg-gray-200 text-gray-500"
+                      }`}
+                    >
+                      <Camera size={20} />
+                    </div>
+                    <span
+                      className={`text-sm font-medium ${
+                        file ? "text-green-700" : "text-gray-500"
+                      }`}
+                    >
+                      {file ? file.name : "Cliquez pour choisir une photo"}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <button
-                type="submit"
-                disabled={uploading}
-                className="bg-black text-white px-6 py-2 rounded-lg font-medium hover:bg-gray-800 transition disabled:opacity-50 h-10"
-              >
-                {uploading ? "Envoi..." : "Ajouter au catalogue"}
-              </button>
+
+              {/* BOUTON D'ENVOI */}
+              <div className="flex items-end">
+                <button
+                  type="submit"
+                  disabled={uploading}
+                  className="w-full md:w-auto bg-black text-white px-8 py-3 rounded-xl font-semibold hover:bg-gray-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-gray-200"
+                >
+                  {uploading ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    "Ajouter au catalogue"
+                  )}
+                </button>
+              </div>
             </form>
           </div>
         ) : (
-          <div className="bg-red-50 border border-red-100 p-6 rounded-xl mb-10 text-center animate-pulse">
-            <p className="text-red-600 font-bold text-lg">
-              🚨 Limite atteinte !
+          <div className="bg-red-50 border border-red-100 p-6 rounded-2xl mb-10 text-center">
+            <p className="text-red-600 font-bold text-lg flex items-center justify-center gap-2">
+              🚨 Galerie pleine !
             </p>
             <p className="text-sm text-red-500 mt-1">
-              Vous avez utilisé vos 12 emplacements. Supprimez une ancienne
-              photo pour en ajouter une nouvelle.
+              Supprimez une ancienne photo pour faire de la place.
             </p>
           </div>
         )}
 
         {/* --- GALERIE PHOTO --- */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {models.map((model) => (
             <div
               key={model.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition group relative"
+              onClick={() => setSelectedImage(model.image_url)} // Ouvre la Lightbox
+              className="group relative bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden cursor-zoom-in hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
             >
-              {/* Bouton SUPPRIMER (Croix rouge) */}
-              <button
-                onClick={() => handleDelete(model.id, model.image_url)}
-                className="absolute top-2 right-2 bg-white text-red-500 w-8 h-8 rounded-full flex items-center justify-center shadow-md hover:bg-red-500 hover:text-white transition z-10 opacity-0 group-hover:opacity-100"
-                title="Supprimer la photo"
-              >
-                🗑️
-              </button>
-
-              <div className="relative h-64 w-full bg-gray-100">
+              {/* IMAGE */}
+              <div className="aspect-[3/4] w-full bg-gray-100 relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={model.image_url}
                   alt={model.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                  className="w-full h-full object-cover transition duration-700 group-hover:scale-110"
                 />
+                {/* Overlay sombre au survol */}
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
               </div>
-              <div className="p-4">
-                <h3 className="font-bold text-gray-900">{model.title}</h3>
-                <p className="text-xs text-gray-400 mt-1 uppercase">
+
+              {/* INFORMATIONS */}
+              <div className="p-4 relative">
+                <h3 className="font-bold text-gray-900 truncate pr-8">
+                  {model.title}
+                </h3>
+                <p className="text-xs text-gray-400 mt-1 uppercase tracking-wider">
                   {model.category}
                 </p>
+
+                {/* BOUTON SUPPRIMER */}
+                <button
+                  onClick={(e) => handleDelete(e, model.id, model.image_url)}
+                  className="absolute top-4 right-3 text-gray-300 hover:text-red-500 transition-colors p-1"
+                  title="Supprimer"
+                  aria-label="Supprimer le modèle"
+                >
+                  <Trash2 size={18} />
+                </button>
               </div>
             </div>
           ))}
 
+          {/* EMPTY STATE */}
           {models.length === 0 && (
-            <div className="col-span-full text-center py-20 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
-              Votre catalogue est vide. Ajoutez votre première photo !
+            <div className="col-span-full py-20 flex flex-col items-center justify-center text-gray-400 bg-white rounded-2xl border-2 border-dashed border-gray-100">
+              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                <ImageIcon size={32} className="text-gray-300" />
+              </div>
+              <p>Votre catalogue est vide.</p>
+              <p className="text-sm">
+                Ajoutez votre première création ci-dessus !
+              </p>
             </div>
           )}
         </div>
       </div>
+
+      {/* --- LIGHTBOX (MODALE PLEIN ÉCRAN) --- */}
+      {selectedImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setSelectedImage(null)}
+        >
+          {/* Bouton Fermer */}
+          <button
+            className="absolute top-6 right-6 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-full transition-all"
+            onClick={() => setSelectedImage(null)}
+            aria-label="Fermer"
+          >
+            <X size={32} />
+          </button>
+
+          {/* Image en grand */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={selectedImage}
+            alt="Zoom"
+            className="max-h-[90vh] max-w-[95vw] rounded-lg shadow-2xl object-contain animate-in zoom-in-95 duration-300"
+            onClick={(e) => e.stopPropagation()} // Évite de fermer si on clique sur l'image
+          />
+        </div>
+      )}
     </div>
   );
 }
