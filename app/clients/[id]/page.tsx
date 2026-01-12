@@ -280,7 +280,7 @@ export default function ClientDetails() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              👗 Commandes
+               Commandes
               <span className="bg-gray-200 text-gray-600 text-xs px-2 py-0.5 rounded-full">
                 {orders.length}
               </span>
