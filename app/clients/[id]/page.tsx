@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { useParams, useRouter } from "next/navigation"; // Ajout de useRouter
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2 } from "lucide-react"; // Ajout de l'icône poubelle
+import { Trash2, FileText } from "lucide-react"; // FileText pour la facture
+import { generateInvoice } from "../../utils/invoiceGenerator"; // Import du générateur
 
 // --- 1. CONFIGURATION DES MESURES ---
 const STANDARD_MEASUREMENTS = [
@@ -18,6 +19,7 @@ const STANDARD_MEASUREMENTS = [
   { key: "dos", label: "Longueur Dos" },
 ];
 
+// --- TYPES ---
 type Client = {
   id: string;
   full_name: string;
@@ -33,32 +35,62 @@ type Order = {
   status: string;
   deadline: string;
   price: number;
+  description: string;
+  created_at: string;
+};
+
+type ShopProfile = {
+  shop_name: string;
+  shop_address: string;
+  shop_phone: string;
+  email: string;
 };
 
 export default function ClientDetails() {
   const params = useParams();
-  const router = useRouter(); // Pour la redirection après suppression
+  const router = useRouter();
 
   // Données
   const [client, setClient] = useState<Client | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [shopProfile, setShopProfile] = useState<ShopProfile | null>(null); // Pour la facture
   const [loading, setLoading] = useState(true);
 
-  // Édition des mesures
+  // Édition
   const [isEditingMeasurements, setIsEditingMeasurements] = useState(false);
   const [tempMeasurements, setTempMeasurements] = useState<
     Record<string, string>
   >({});
-
-  // --- NOUVEAU : ÉDITION COMMANDE (MODAL) ---
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   // --- CHARGEMENT ---
   useEffect(() => {
-    const fetchClientData = async () => {
+    const fetchData = async () => {
       if (!params?.id) return;
 
-      // 1. Charger le client
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      // 1. Charger le Profil Atelier (pour les factures)
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+
+        if (profile) {
+          setShopProfile({
+            shop_name: profile.shop_name,
+            shop_address: profile.shop_address,
+            shop_phone: profile.shop_phone,
+            email: user.email || "",
+          });
+        }
+      }
+
+      // 2. Charger le client
       const { data: clientData, error: clientError } = await supabase
         .from("clients")
         .select("*")
@@ -72,7 +104,7 @@ export default function ClientDetails() {
         setTempMeasurements(clientData.measurements || {});
       }
 
-      // 2. Charger ses commandes
+      // 3. Charger les commandes
       const { data: ordersData, error: ordersError } = await supabase
         .from("orders")
         .select("*")
@@ -85,14 +117,51 @@ export default function ClientDetails() {
       setLoading(false);
     };
 
-    fetchClientData();
+    fetchData();
   }, [params?.id]);
 
-  // --- LOGIQUE SUPPRESSION CLIENT (NOUVEAU) ---
+  // --- LOGIQUE FACTURE PDF ---
+  const handleDownloadInvoice = (e: React.MouseEvent, order: Order) => {
+    e.stopPropagation(); // Empêche d'ouvrir le modal d'édition
+
+    if (!client) return;
+
+    // Valeurs par défaut si le profil n'est pas encore configuré
+    const currentShop = shopProfile || {
+      shop_name: "Votre Atelier",
+      shop_address: "",
+      shop_phone: "",
+      email: "",
+    };
+
+    generateInvoice({
+      shop: {
+        name: currentShop.shop_name,
+        address: currentShop.shop_address,
+        phone: currentShop.shop_phone,
+        email: currentShop.email,
+      },
+      client: {
+        name: client.full_name,
+        phone: client.phone,
+        city: client.city,
+      },
+      order: {
+        id: order.id,
+        title: order.title,
+        date: new Date().toISOString().split("T")[0],
+        deadline: order.deadline,
+        description: order.description,
+        price: order.price,
+        status: order.status,
+      },
+    });
+  };
+
+  // --- LOGIQUE SUPPRESSION CLIENT ---
   const handleDeleteClient = async () => {
     if (!client) return;
 
-    // 1. Confirmation de sécurité
     const confirm = window.confirm(
       "🛑 ATTENTION : Voulez-vous vraiment supprimer ce client ?\n\nCette action est irréversible et effacera également tout l'historique de ses commandes."
     );
@@ -100,31 +169,17 @@ export default function ClientDetails() {
 
     setLoading(true);
 
-    // 2. Supprimer d'abord les commandes liées (Nettoyage)
-    const { error: ordersError } = await supabase
-      .from("orders")
-      .delete()
-      .eq("client_id", client.id);
-
-    if (ordersError) {
-      alert(
-        "Erreur lors de la suppression des commandes : " + ordersError.message
-      );
-      setLoading(false);
-      return;
-    }
-
-    // 3. Supprimer le client
+    // Suppression en cascade (Commandes puis Client)
+    await supabase.from("orders").delete().eq("client_id", client.id);
     const { error: clientError } = await supabase
       .from("clients")
       .delete()
       .eq("id", client.id);
 
     if (clientError) {
-      alert("Erreur lors de la suppression du client : " + clientError.message);
+      alert("Erreur lors de la suppression : " + clientError.message);
       setLoading(false);
     } else {
-      // 4. Redirection vers l'accueil
       router.push("/");
     }
   };
@@ -223,9 +278,9 @@ export default function ClientDetails() {
       </div>
 
       <div className="max-w-xl mx-auto p-6 flex flex-col gap-6">
-        {/* --- 1. CARTE PROFIL (Modifiée avec bouton supprimer) --- */}
+        {/* --- 1. CARTE PROFIL --- */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col items-center text-center relative">
-          {/* BOUTON SUPPRIMER CLIENT (NOUVEAU) */}
+          {/* BOUTON SUPPRIMER CLIENT */}
           <button
             onClick={handleDeleteClient}
             className="absolute top-4 right-4 text-gray-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all"
@@ -280,7 +335,7 @@ export default function ClientDetails() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-               Commandes
+              Commandes
               <span className="bg-gray-200 text-gray-600 text-xs px-2 py-0.5 rounded-full">
                 {orders.length}
               </span>
@@ -314,7 +369,7 @@ export default function ClientDetails() {
                     <p className="text-sm text-gray-500 mt-1">
                       📅 {new Date(order.deadline).toLocaleDateString("fr-FR")}
                     </p>
-                    <div className="mt-2">
+                    <div className="mt-2 flex gap-2">
                       {order.status === "en_attente" && (
                         <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full font-medium">
                           En attente
@@ -332,11 +387,20 @@ export default function ClientDetails() {
                       )}
                     </div>
                   </div>
-                  <div className="text-right">
+
+                  <div className="flex flex-col items-end gap-3">
                     <p className="font-bold text-gray-900">
                       {order.price.toLocaleString()} F
                     </p>
-                    <p className="text-xs text-gray-400 mt-1">Modifier ›</p>
+
+                    {/* BOUTON FACTURE PDF (Ajouté) */}
+                    <button
+                      onClick={(e) => handleDownloadInvoice(e, order)}
+                      className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition border border-blue-100"
+                      title="Télécharger la facture"
+                    >
+                      <FileText size={14} /> Facture
+                    </button>
                   </div>
                 </div>
               ))
@@ -362,7 +426,7 @@ export default function ClientDetails() {
 
           <div className="p-6">
             {isEditingMeasurements ? (
-              // MODE ÉDITION MESURES
+              // MODE ÉDITION
               <div className="grid grid-cols-2 gap-4">
                 {STANDARD_MEASUREMENTS.map((m) => (
                   <div key={m.key}>
@@ -376,7 +440,7 @@ export default function ClientDetails() {
                       <input
                         id={m.key}
                         type="number"
-                        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none font-medium"
+                        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-black outline-none font-medium"
                         value={tempMeasurements[m.key] || ""}
                         onChange={(e) =>
                           handleMeasurementChange(m.key, e.target.value)
@@ -405,7 +469,7 @@ export default function ClientDetails() {
                 </div>
               </div>
             ) : (
-              // MODE AFFICHAGE MESURES
+              // MODE VISUALISATION
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {STANDARD_MEASUREMENTS.map((m) => {
                   const value = client.measurements?.[m.key];
