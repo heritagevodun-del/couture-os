@@ -4,8 +4,14 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2, FileText } from "lucide-react"; // FileText pour la facture
-import { generateInvoice } from "../../utils/invoiceGenerator"; // Import du générateur
+import {
+  Trash2,
+  FileText,
+  MessageCircle,
+  BellRing,
+  CheckCircle2,
+} from "lucide-react";
+import { generateInvoice } from "../../utils/invoiceGenerator";
 
 // --- 1. CONFIGURATION DES MESURES ---
 const STANDARD_MEASUREMENTS = [
@@ -53,7 +59,7 @@ export default function ClientDetails() {
   // Données
   const [client, setClient] = useState<Client | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [shopProfile, setShopProfile] = useState<ShopProfile | null>(null); // Pour la facture
+  const [shopProfile, setShopProfile] = useState<ShopProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Édition
@@ -72,7 +78,7 @@ export default function ClientDetails() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      // 1. Charger le Profil Atelier (pour les factures)
+      // 1. Charger le Profil Atelier
       if (user) {
         const { data: profile } = await supabase
           .from("profiles")
@@ -120,13 +126,40 @@ export default function ClientDetails() {
     fetchData();
   }, [params?.id]);
 
+  // --- LOGIQUE WHATSAPP ---
+  const sendWhatsAppMessage = (type: "reminder" | "ready", order: Order) => {
+    if (!client || !client.phone) {
+      alert("Ajoutez d'abord un numéro de téléphone au client.");
+      return;
+    }
+
+    const shopName = shopProfile?.shop_name || "L'Atelier";
+    const cleanPhone = client.phone.replace(/[^0-9]/g, "");
+
+    let message = "";
+
+    if (type === "reminder") {
+      message = `Bonjour ${
+        client.full_name
+      }, ici ${shopName}. 👋\n\nPetit rappel concernant votre commande "${
+        order.title
+      }".\nMontant total : ${order.price.toLocaleString()} FCFA.\n\nMerci de votre confiance ! 🧵`;
+    } else if (type === "ready") {
+      message = `Bonne nouvelle ${client.full_name} ! 🎉\n\nVotre tenue "${order.title}" est terminée et prête à être récupérée à ${shopName}.\n\nÀ très vite !`;
+    }
+
+    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
+      message
+    )}`;
+    window.open(url, "_blank");
+  };
+
   // --- LOGIQUE FACTURE PDF ---
   const handleDownloadInvoice = (e: React.MouseEvent, order: Order) => {
-    e.stopPropagation(); // Empêche d'ouvrir le modal d'édition
+    e.stopPropagation();
 
     if (!client) return;
 
-    // Valeurs par défaut si le profil n'est pas encore configuré
     const currentShop = shopProfile || {
       shop_name: "Votre Atelier",
       shop_address: "",
@@ -161,53 +194,45 @@ export default function ClientDetails() {
   // --- LOGIQUE SUPPRESSION CLIENT ---
   const handleDeleteClient = async () => {
     if (!client) return;
-
     const confirm = window.confirm(
-      "🛑 ATTENTION : Voulez-vous vraiment supprimer ce client ?\n\nCette action est irréversible et effacera également tout l'historique de ses commandes."
+      "🛑 ATTENTION : Supprimer ce client et toutes ses commandes ?"
     );
     if (!confirm) return;
-
     setLoading(true);
 
-    // Suppression en cascade (Commandes puis Client)
     await supabase.from("orders").delete().eq("client_id", client.id);
-    const { error: clientError } = await supabase
+    const { error } = await supabase
       .from("clients")
       .delete()
       .eq("id", client.id);
 
-    if (clientError) {
-      alert("Erreur lors de la suppression : " + clientError.message);
+    if (error) {
+      alert("Erreur : " + error.message);
       setLoading(false);
     } else {
       router.push("/");
     }
   };
 
-  // --- LOGIQUE MESURES ---
-  const handleMeasurementChange = (key: string, value: string) => {
-    setTempMeasurements((prev) => ({ ...prev, [key]: value }));
-  };
-
+  // --- LOGIQUE MESURES & COMMANDES ---
   const handleSaveMeasurements = async () => {
     if (!client) return;
     const { error } = await supabase
       .from("clients")
       .update({ measurements: tempMeasurements })
       .eq("id", client.id);
-
-    if (error) {
-      alert("Erreur lors de la sauvegarde !");
-    } else {
+    if (!error) {
       setClient({ ...client, measurements: tempMeasurements });
       setIsEditingMeasurements(false);
     }
   };
 
-  // --- LOGIQUE MODIFICATION COMMANDES ---
+  const handleMeasurementChange = (key: string, value: string) => {
+    setTempMeasurements((prev) => ({ ...prev, [key]: value }));
+  };
+
   const handleUpdateOrder = async () => {
     if (!editingOrder) return;
-
     const { error } = await supabase
       .from("orders")
       .update({
@@ -217,9 +242,7 @@ export default function ClientDetails() {
       })
       .eq("id", editingOrder.id);
 
-    if (error) {
-      alert("Erreur mise à jour commande : " + error.message);
-    } else {
+    if (!error) {
       setOrders((prev) =>
         prev.map((o) => (o.id === editingOrder.id ? editingOrder : o))
       );
@@ -229,23 +252,17 @@ export default function ClientDetails() {
 
   const handleDeleteOrder = async () => {
     if (!editingOrder) return;
-    const confirm = window.confirm("Supprimer cette commande définitivement ?");
-    if (!confirm) return;
-
+    if (!window.confirm("Supprimer cette commande ?")) return;
     const { error } = await supabase
       .from("orders")
       .delete()
       .eq("id", editingOrder.id);
-
-    if (error) {
-      alert("Erreur suppression : " + error.message);
-    } else {
+    if (!error) {
       setOrders((prev) => prev.filter((o) => o.id !== editingOrder.id));
       setEditingOrder(null);
     }
   };
 
-  // --- UTILITAIRES ---
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -255,14 +272,12 @@ export default function ClientDetails() {
       .slice(0, 2);
   };
 
-  if (loading) {
+  if (loading)
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-400 animate-pulse">Chargement du dossier...</p>
+        <p className="animate-pulse">Chargement...</p>
       </div>
     );
-  }
-
   if (!client) return <p className="text-center p-8">Client introuvable.</p>;
 
   return (
@@ -273,18 +288,18 @@ export default function ClientDetails() {
           href="/"
           className="text-gray-500 hover:text-black flex items-center gap-2 text-sm font-medium"
         >
-          ← Retour à l&apos;atelier
+          ← Retour
         </Link>
       </div>
 
       <div className="max-w-xl mx-auto p-6 flex flex-col gap-6">
-        {/* --- 1. CARTE PROFIL --- */}
+        {/* --- CARTE PROFIL --- */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col items-center text-center relative">
-          {/* BOUTON SUPPRIMER CLIENT */}
           <button
             onClick={handleDeleteClient}
             className="absolute top-4 right-4 text-gray-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all"
             title="Supprimer ce client"
+            aria-label="Supprimer ce client" // CORRECTION A11Y
           >
             <Trash2 size={20} />
           </button>
@@ -295,9 +310,9 @@ export default function ClientDetails() {
           <h1 className="text-2xl font-bold text-gray-900 capitalize">
             {client.full_name}
           </h1>
-          <div className="flex items-center gap-2 text-gray-500 mt-1 text-sm font-medium">
-            <span>📍 {client.city}</span>
-          </div>
+          <p className="text-gray-500 text-sm font-medium mt-1">
+            📍 {client.city}
+          </p>
 
           <div className="flex gap-3 mt-6 w-full">
             {client.phone && (
@@ -309,11 +324,11 @@ export default function ClientDetails() {
                   📞 Appeler
                 </a>
                 <a
-                  href={`https://wa.me/${client.phone.replace(/\s+/g, "")}`}
+                  href={`https://wa.me/${client.phone.replace(/[^0-9]/g, "")}`}
                   target="_blank"
                   className="flex-1 flex items-center justify-center gap-2 bg-[#25D366] text-white py-2.5 rounded-xl font-medium hover:opacity-90 transition shadow-sm"
                 >
-                  💬 WhatsApp
+                  <MessageCircle size={18} /> WhatsApp
                 </a>
               </>
             )}
@@ -331,11 +346,11 @@ export default function ClientDetails() {
           )}
         </div>
 
-        {/* --- 2. COMMANDES --- */}
+        {/* --- COMMANDES --- */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              Commandes
+              Commandes{" "}
               <span className="bg-gray-200 text-gray-600 text-xs px-2 py-0.5 rounded-full">
                 {orders.length}
               </span>
@@ -350,26 +365,33 @@ export default function ClientDetails() {
 
           <div className="flex flex-col gap-3">
             {orders.length === 0 ? (
-              <div className="bg-white border border-dashed border-gray-300 rounded-xl p-8 text-center">
-                <p className="text-gray-400 text-sm">
-                  Aucune commande pour le moment.
-                </p>
+              <div className="bg-white border border-dashed border-gray-300 rounded-xl p-8 text-center text-gray-400 text-sm">
+                Aucune commande.
               </div>
             ) : (
               orders.map((order) => (
                 <div
                   key={order.id}
                   onClick={() => setEditingOrder(order)}
-                  className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center cursor-pointer hover:border-black transition group"
+                  className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:border-black transition group"
                 >
-                  <div>
-                    <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition">
-                      {order.title}
-                    </h3>
-                    <p className="text-sm text-gray-500 mt-1">
-                      📅 {new Date(order.deadline).toLocaleDateString("fr-FR")}
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition">
+                        {order.title}
+                      </h3>
+                      <p className="text-sm text-gray-500 mt-0.5">
+                        📅{" "}
+                        {new Date(order.deadline).toLocaleDateString("fr-FR")}
+                      </p>
+                    </div>
+                    <p className="font-bold text-gray-900">
+                      {order.price.toLocaleString()} F
                     </p>
-                    <div className="mt-2 flex gap-2">
+                  </div>
+
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-50">
+                    <div className="flex gap-2">
                       {order.status === "en_attente" && (
                         <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full font-medium">
                           En attente
@@ -386,21 +408,44 @@ export default function ClientDetails() {
                         </span>
                       )}
                     </div>
-                  </div>
 
-                  <div className="flex flex-col items-end gap-3">
-                    <p className="font-bold text-gray-900">
-                      {order.price.toLocaleString()} F
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => handleDownloadInvoice(e, order)}
+                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                        title="Télécharger la facture"
+                        aria-label="Télécharger la facture"
+                      >
+                        <FileText size={18} />
+                      </button>
 
-                    {/* BOUTON FACTURE PDF (Ajouté) */}
-                    <button
-                      onClick={(e) => handleDownloadInvoice(e, order)}
-                      className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition border border-blue-100"
-                      title="Télécharger la facture"
-                    >
-                      <FileText size={14} /> Facture
-                    </button>
+                      {client.phone &&
+                        (order.status === "termine" ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              sendWhatsAppMessage("ready", order);
+                            }}
+                            className="p-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition"
+                            title="Prévenir que c'est prêt"
+                            aria-label="Prévenir que c'est prêt"
+                          >
+                            <CheckCircle2 size={18} />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              sendWhatsAppMessage("reminder", order);
+                            }}
+                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition"
+                            title="Relancer pour paiement"
+                            aria-label="Relancer pour paiement"
+                          >
+                            <BellRing size={18} />
+                          </button>
+                        ))}
+                    </div>
                   </div>
                 </div>
               ))
@@ -408,12 +453,10 @@ export default function ClientDetails() {
           </div>
         </div>
 
-        {/* --- 3. MESURES --- */}
+        {/* --- MESURES --- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              📏 Mesures
-            </h2>
+            <h2 className="text-lg font-bold text-gray-900">📏 Mesures</h2>
             {!isEditingMeasurements && (
               <button
                 onClick={() => setIsEditingMeasurements(true)}
@@ -423,10 +466,8 @@ export default function ClientDetails() {
               </button>
             )}
           </div>
-
           <div className="p-6">
             {isEditingMeasurements ? (
-              // MODE ÉDITION
               <div className="grid grid-cols-2 gap-4">
                 {STANDARD_MEASUREMENTS.map((m) => (
                   <div key={m.key}>
@@ -437,6 +478,7 @@ export default function ClientDetails() {
                       {m.label}
                     </label>
                     <div className="relative">
+                      {/* CORRECTION A11Y : Ajout de id et lien avec htmlFor */}
                       <input
                         id={m.key}
                         type="number"
@@ -469,38 +511,35 @@ export default function ClientDetails() {
                 </div>
               </div>
             ) : (
-              // MODE VISUALISATION
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {STANDARD_MEASUREMENTS.map((m) => {
-                  const value = client.measurements?.[m.key];
-                  return (
-                    <div
-                      key={m.key}
-                      className="p-3 bg-gray-50 rounded-xl text-center border border-gray-100"
-                    >
-                      <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide mb-1">
-                        {m.label}
-                      </div>
-                      <div className="text-lg font-bold text-gray-900">
-                        {value ? `${value} cm` : "-"}
-                      </div>
+                {STANDARD_MEASUREMENTS.map((m) => (
+                  <div
+                    key={m.key}
+                    className="p-3 bg-gray-50 rounded-xl text-center border border-gray-100"
+                  >
+                    <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide mb-1">
+                      {m.label}
                     </div>
-                  );
-                })}
+                    <div className="text-lg font-bold text-gray-900">
+                      {client.measurements?.[m.key]
+                        ? `${client.measurements[m.key]} cm`
+                        : "-"}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* --- MODAL DE MODIFICATION DE COMMANDE --- */}
+      {/* --- MODAL EDIT ORDER (CORRECTIONS A11Y APPLIQUÉES ICI) --- */}
       {editingOrder && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in">
             <h3 className="text-lg font-bold mb-4 border-b pb-2">
               Modifier la commande
             </h3>
-
             <div className="space-y-4">
               {/* Titre */}
               <div>
@@ -527,7 +566,7 @@ export default function ClientDetails() {
                   htmlFor="edit-price"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  Prix (FCFA)
+                  Prix
                 </label>
                 <input
                   id="edit-price"
@@ -565,19 +604,17 @@ export default function ClientDetails() {
                 </select>
               </div>
 
-              {/* Boutons d'action */}
               <div className="flex flex-col gap-3 pt-4">
                 <button
                   onClick={handleUpdateOrder}
                   className="w-full bg-black text-white font-bold py-3 rounded-xl hover:bg-gray-800"
                 >
-                  Enregistrer les modifications
+                  Enregistrer
                 </button>
-
                 <div className="flex gap-3">
                   <button
                     onClick={() => setEditingOrder(null)}
-                    className="flex-1 bg-gray-100 text-gray-700 font-medium py-3 rounded-xl hover:bg-gray-200"
+                    className="flex-1 bg-gray-100 text-gray-700 font-medium py-3 rounded-xl"
                   >
                     Annuler
                   </button>
