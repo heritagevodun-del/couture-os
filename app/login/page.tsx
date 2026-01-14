@@ -57,7 +57,7 @@ export default function LoginPage() {
     return re.test(String(email).toLowerCase());
   };
 
-  // --- 3. LOGIQUE MOT DE PASSE OUBLIÉ (Corrigée sans 'any') ---
+  // --- 3. LOGIQUE MOT DE PASSE OUBLIÉ ---
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setGlobalError("");
@@ -77,7 +77,6 @@ export default function LoginPage() {
       if (error) throw error;
       setSuccessMessage("Email envoyé ! Vérifiez votre boîte de réception.");
     } catch (error: unknown) {
-      // Correction ici : On traite l'erreur proprement sans 'any'
       let errorMessage = "Erreur lors de l'envoi.";
       if (error instanceof Error) {
         errorMessage = error.message;
@@ -162,78 +161,83 @@ export default function LoginPage() {
   if (session) return null;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-lg border border-gray-100">
-        {/* --- LOGO --- */}
-        <div className="flex justify-center mb-6">
-          <div className="logo-bouton-bg relative w-20 h-20 bg-[#1a1a1a] rounded-full border-2 border-[#D4AF37] shadow-md flex items-center justify-center">
-            <div className="absolute w-[140%] h-[3px] bg-gradient-to-r from-gray-200 to-gray-400 -rotate-45 rounded-full shadow-sm flex items-center justify-end pr-[3px]">
-              <div className="w-[6px] h-[2px] bg-[#1a1a1a] rounded-full"></div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+      <div className="max-w-md w-full bg-white p-10 rounded-2xl shadow-xl border border-gray-100">
+        {/* --- LOGO PREMIUM --- */}
+        <div className="flex justify-center mb-8">
+          <div className="relative w-20 h-20 bg-black rounded-full border-2 border-[#D4AF37] shadow-lg flex items-center justify-center group hover:scale-105 transition-transform duration-500">
+            {/* Aiguille stylisée */}
+            <div className="absolute w-[140%] h-[2px] bg-gradient-to-r from-gray-400 to-white -rotate-45 rounded-full shadow-sm flex items-center justify-end pr-[3px]">
+              <div className="w-[6px] h-[6px] bg-[#D4AF37] rounded-full shadow-sm animate-pulse"></div>
             </div>
+            {/* Initiales ou Symbole */}
+            <span className="text-[#D4AF37] font-bold text-2xl tracking-tighter">
+              OS
+            </span>
           </div>
         </div>
 
         {/* --- TITRE --- */}
-        <h2 className="text-center text-2xl font-bold text-gray-900 mb-2">
+        <h2 className="text-center text-3xl font-bold text-gray-900 mb-2 tracking-tight">
           {isForgotPassword
-            ? "Réinitialisation"
+            ? "Mot de passe oublié ?"
             : isLogin
-            ? "Bienvenue sur CoutureOS"
-            : "Créer un atelier"}
+            ? "Bon retour parmi nous"
+            : "Créer votre atelier"}
         </h2>
-        <p className="text-center text-gray-500 mb-8">
+        <p className="text-center text-gray-500 mb-10 text-sm">
           {isForgotPassword
-            ? "Entrez votre email pour recevoir un lien de secours."
+            ? "Nous vous enverrons un lien de récupération."
             : isLogin
-            ? "La plateforme de gestion pour les pros de la couture."
-            : "Rejoignez la communauté des couturiers connectés."}
+            ? "Connectez-vous pour gérer vos commandes."
+            : "Rejoignez la révolution de la couture digitale."}
         </p>
 
-        {/* --- MESSAGES --- */}
+        {/* --- MESSAGES D'ERREUR/SUCCÈS --- */}
         {globalError && (
-          <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-center gap-2">
-            <AlertCircle size={16} />
+          <div className="mb-6 p-4 bg-red-50 text-red-600 text-sm rounded-xl flex items-center gap-3 border border-red-100 animate-in fade-in slide-in-from-top-2">
+            <AlertCircle size={18} className="shrink-0" />
             {globalError}
           </div>
         )}
         {successMessage && (
-          <div className="mb-4 p-3 bg-green-50 text-green-700 text-sm rounded-lg border border-green-200 text-center">
+          <div className="mb-6 p-4 bg-green-50 text-green-700 text-sm rounded-xl border border-green-200 text-center animate-in fade-in slide-in-from-top-2">
             {successMessage}
           </div>
         )}
 
         {/* CAS 1 : MOT DE PASSE OUBLIÉ */}
         {isForgotPassword ? (
-          <form onSubmit={handleResetPassword} className="space-y-5">
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">
-                Adresse email
+          <form onSubmit={handleResetPassword} className="space-y-6">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide">
+                Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type="email"
-                  placeholder="Votre adresse email"
+                  placeholder="exemple@atelier.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-black outline-none"
+                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black focus:bg-white outline-none transition-all placeholder:text-gray-400 text-gray-900 font-medium"
                   required
                 />
               </div>
               {emailError && (
-                <p className="text-xs text-red-500 mt-1">{emailError}</p>
+                <p className="text-xs text-red-500 font-medium">{emailError}</p>
               )}
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-black text-white py-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
+              className="w-full bg-black text-white py-4 rounded-xl font-bold hover:bg-gray-900 transition-all flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0"
             >
               {loading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
-                "Envoyer le lien"
+                "Envoyer le lien de récupération"
               )}
             </button>
 
@@ -244,42 +248,44 @@ export default function LoginPage() {
                 setGlobalError("");
                 setSuccessMessage("");
               }}
-              className="w-full text-sm text-gray-600 hover:text-black mt-4 flex items-center justify-center gap-2 transition-colors"
+              className="w-full text-sm text-gray-500 hover:text-black mt-4 flex items-center justify-center gap-2 transition-colors font-medium"
             >
               <ArrowLeft size={16} /> Retour à la connexion
             </button>
           </form>
         ) : (
           /* CAS 2 : CONNEXION / INSCRIPTION */
-          <form onSubmit={handleAuth} className="space-y-5">
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">
-                Adresse email
+          <form onSubmit={handleAuth} className="space-y-6">
+            {/* CHAMP EMAIL */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide">
+                Adresse Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type="email"
-                  placeholder="Votre adresse email"
+                  placeholder="exemple@atelier.com"
                   value={email}
                   onChange={(e) => {
                     setEmail(e.target.value);
                     setEmailError("");
                   }}
-                  className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none transition-all ${
+                  className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-black focus:bg-white outline-none transition-all placeholder:text-gray-400 text-gray-900 font-medium ${
                     emailError ? "border-red-500 bg-red-50" : "border-gray-200"
                   }`}
                   required
                 />
               </div>
               {emailError && (
-                <p className="text-xs text-red-500 mt-1">{emailError}</p>
+                <p className="text-xs text-red-500 font-medium">{emailError}</p>
               )}
             </div>
 
-            <div className="space-y-1">
+            {/* CHAMP PASSWORD */}
+            <div className="space-y-1.5">
               <div className="flex justify-between items-center">
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide">
                   Mot de passe
                 </label>
                 {isLogin && (
@@ -290,24 +296,24 @@ export default function LoginPage() {
                       setGlobalError("");
                       setEmailError("");
                     }}
-                    className="text-xs font-medium text-[#D4AF37] hover:text-yellow-600 transition-colors"
+                    className="text-xs font-bold text-black hover:underline transition-all"
                   >
-                    Mot de passe oublié ?
+                    Oublié ?
                   </button>
                 )}
               </div>
 
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type={showPassword ? "text" : "password"}
-                  placeholder="Votre mot de passe"
+                  placeholder="••••••••"
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value);
                     setPasswordError("");
                   }}
-                  className={`w-full pl-10 pr-12 py-3 border rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none transition-all ${
+                  className={`w-full pl-12 pr-12 py-3.5 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-black focus:bg-white outline-none transition-all placeholder:text-gray-400 text-gray-900 font-medium ${
                     passwordError
                       ? "border-red-500 bg-red-50"
                       : "border-gray-200"
@@ -317,26 +323,27 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black transition-colors"
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
             </div>
 
+            {/* CHAMP CONFIRM PASSWORD (Inscription seulement) */}
             {!isLogin && (
-              <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
-                <label className="block text-sm font-medium text-gray-700">
+              <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide">
                   Confirmer le mot de passe
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                   <input
                     type={showPassword ? "text" : "password"}
-                    placeholder="Répétez le mot de passe"
+                    placeholder="••••••••"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none transition-all ${
+                    className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-black focus:bg-white outline-none transition-all placeholder:text-gray-400 text-gray-900 font-medium ${
                       passwordError
                         ? "border-red-500 bg-red-50"
                         : "border-gray-200"
@@ -345,29 +352,36 @@ export default function LoginPage() {
                   />
                 </div>
                 {passwordError && (
-                  <p className="text-xs text-red-500 mt-1">{passwordError}</p>
+                  <p className="text-xs text-red-500 font-medium">
+                    {passwordError}
+                  </p>
                 )}
               </div>
             )}
 
+            {/* BOUTON PRINCIPAL */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-black text-white py-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
+              className="w-full bg-black text-white py-4 rounded-xl font-bold hover:bg-gray-900 transition-all flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 mt-4"
             >
               {loading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : isLogin ? (
                 "Se connecter"
               ) : (
-                "Créer mon atelier"
+                "Commencer l'aventure"
               )}
             </button>
           </form>
         )}
 
+        {/* TOGGLE CONNEXION / INSCRIPTION */}
         {!isForgotPassword && (
-          <div className="mt-6 text-center">
+          <div className="mt-8 text-center pt-6 border-t border-gray-100">
+            <p className="text-sm text-gray-500 mb-2">
+              {isLogin ? "Nouveau ici ?" : "Déjà un compte ?"}
+            </p>
             <button
               onClick={() => {
                 setIsLogin(!isLogin);
@@ -375,11 +389,9 @@ export default function LoginPage() {
                 setEmailError("");
                 setPasswordError("");
               }}
-              className="text-sm text-gray-600 hover:text-black font-medium underline-offset-2 hover:underline"
+              className="text-black font-bold hover:underline transition-all"
             >
-              {isLogin
-                ? "Pas encore de compte ? S'inscrire"
-                : "J'ai déjà un compte, se connecter"}
+              {isLogin ? "Créer un compte gratuitement" : "Se connecter"}
             </button>
           </div>
         )}

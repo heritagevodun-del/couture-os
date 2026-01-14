@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Trash2,
   Upload,
@@ -28,31 +29,39 @@ export default function Catalogue() {
   const [uploading, setUploading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [newTitle, setNewTitle] = useState("");
-
-  // 🔍 État pour gérer l'image ouverte en grand (Lightbox)
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const router = useRouter();
 
-  // 1. Charger le catalogue au démarrage
+  // 1. Charger le catalogue SÉCURISÉ (User Only)
   useEffect(() => {
+    const fetchModels = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      // 🔐 SÉCURITÉ : On filtre par user_id
+      const { data, error } = await supabase
+        .from("models")
+        .select("*")
+        .eq("user_id", user.id) // <--- AJOUT CRUCIAL
+        .order("created_at", { ascending: false });
+
+      if (error) console.error(error);
+      else setModels(data || []);
+    };
+
     fetchModels();
-  }, []);
-
-  const fetchModels = async () => {
-    const { data, error } = await supabase
-      .from("models")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) console.error(error);
-    else setModels(data || []);
-  };
+  }, [router]);
 
   // --- VERIFICATION TAILLE IMAGE ---
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
-
-      // Limite : 2 Mo
       if (selectedFile.size > 2 * 1024 * 1024) {
         alert(
           "⚠️ Image trop lourde ! Merci de choisir une photo de moins de 2 Mo."
@@ -65,14 +74,17 @@ export default function Catalogue() {
     }
   };
 
-  // 2. Fonction pour envoyer une photo
+  // 2. Fonction pour envoyer une photo SÉCURISÉE
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (models.length >= MAX_PHOTOS) {
-      return alert(`⚠️ Limite de ${MAX_PHOTOS} photos atteinte.`);
-    }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return router.push("/login");
 
+    if (models.length >= MAX_PHOTOS)
+      return alert(`⚠️ Limite de ${MAX_PHOTOS} photos atteinte.`);
     if (!file || !newTitle)
       return alert("Veuillez choisir une image et un titre !");
 
@@ -93,11 +105,13 @@ export default function Catalogue() {
         data: { publicUrl },
       } = supabase.storage.from("catalogue").getPublicUrl(filePath);
 
+      // 🔐 SÉCURITÉ : On ajoute le user_id
       const { error: dbError } = await supabase.from("models").insert([
         {
           title: newTitle,
           image_url: publicUrl,
           category: "Général",
+          user_id: user.id, // <--- AJOUT CRUCIAL
         },
       ]);
 
@@ -106,13 +120,19 @@ export default function Catalogue() {
       setFile(null);
       setNewTitle("");
 
-      // Reset visuel de l'input
       const fileInput = document.getElementById(
         "model-file"
       ) as HTMLInputElement;
       if (fileInput) fileInput.value = "";
 
-      fetchModels();
+      // Recharger la liste
+      const { data } = await supabase
+        .from("models")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      setModels(data || []);
     } catch (error) {
       console.error("Erreur upload:", error);
       alert("Erreur lors de l'envoi !");
@@ -127,8 +147,7 @@ export default function Catalogue() {
     id: string,
     imageUrl: string
   ) => {
-    e.stopPropagation(); // Empêche d'ouvrir la photo quand on clique sur la poubelle
-
+    e.stopPropagation();
     if (!confirm("Voulez-vous vraiment supprimer ce modèle ?")) return;
 
     const { error } = await supabase.from("models").delete().eq("id", id);
@@ -138,11 +157,10 @@ export default function Catalogue() {
     }
 
     const fileName = imageUrl.split("/").pop();
-    if (fileName) {
-      await supabase.storage.from("catalogue").remove([fileName]);
-    }
+    if (fileName) await supabase.storage.from("catalogue").remove([fileName]);
 
-    fetchModels();
+    // Mise à jour locale (plus rapide que refetch)
+    setModels((prev) => prev.filter((m) => m.id !== id));
   };
 
   return (
@@ -191,7 +209,6 @@ export default function Catalogue() {
               onSubmit={handleUpload}
               className="flex flex-col md:flex-row gap-6 items-stretch"
             >
-              {/* INPUT 1 : TITRE */}
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Titre du modèle
@@ -205,7 +222,6 @@ export default function Catalogue() {
                 />
               </div>
 
-              {/* INPUT 2 : FICHIER (STYLE DRAG & DROP) */}
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Photo du vêtement
@@ -246,7 +262,6 @@ export default function Catalogue() {
                 </div>
               </div>
 
-              {/* BOUTON D'ENVOI */}
               <div className="flex items-end">
                 <button
                   type="submit"
@@ -278,10 +293,9 @@ export default function Catalogue() {
           {models.map((model) => (
             <div
               key={model.id}
-              onClick={() => setSelectedImage(model.image_url)} // Ouvre la Lightbox
+              onClick={() => setSelectedImage(model.image_url)}
               className="group relative bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden cursor-zoom-in hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
             >
-              {/* IMAGE */}
               <div className="aspect-[3/4] w-full bg-gray-100 relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -289,11 +303,8 @@ export default function Catalogue() {
                   alt={model.title}
                   className="w-full h-full object-cover transition duration-700 group-hover:scale-110"
                 />
-                {/* Overlay sombre au survol */}
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
               </div>
-
-              {/* INFORMATIONS */}
               <div className="p-4 relative">
                 <h3 className="font-bold text-gray-900 truncate pr-8">
                   {model.title}
@@ -301,8 +312,6 @@ export default function Catalogue() {
                 <p className="text-xs text-gray-400 mt-1 uppercase tracking-wider">
                   {model.category}
                 </p>
-
-                {/* BOUTON SUPPRIMER */}
                 <button
                   onClick={(e) => handleDelete(e, model.id, model.image_url)}
                   className="absolute top-4 right-3 text-gray-300 hover:text-red-500 transition-colors p-1"
@@ -315,7 +324,6 @@ export default function Catalogue() {
             </div>
           ))}
 
-          {/* EMPTY STATE */}
           {models.length === 0 && (
             <div className="col-span-full py-20 flex flex-col items-center justify-center text-gray-400 bg-white rounded-2xl border-2 border-dashed border-gray-100">
               <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
@@ -330,13 +338,12 @@ export default function Catalogue() {
         </div>
       </div>
 
-      {/* --- LIGHTBOX (MODALE PLEIN ÉCRAN) --- */}
+      {/* --- LIGHTBOX --- */}
       {selectedImage && (
         <div
           className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={() => setSelectedImage(null)}
         >
-          {/* Bouton Fermer */}
           <button
             className="absolute top-6 right-6 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-full transition-all"
             onClick={() => setSelectedImage(null)}
@@ -344,14 +351,12 @@ export default function Catalogue() {
           >
             <X size={32} />
           </button>
-
-          {/* Image en grand */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={selectedImage}
             alt="Zoom"
             className="max-h-[90vh] max-w-[95vw] rounded-lg shadow-2xl object-contain animate-in zoom-in-95 duration-300"
-            onClick={(e) => e.stopPropagation()} // Évite de fermer si on clique sur l'image
+            onClick={(e) => e.stopPropagation()}
           />
         </div>
       )}

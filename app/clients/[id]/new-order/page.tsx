@@ -10,6 +10,7 @@ export default function NewOrder() {
   const params = useParams();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [currency, setCurrency] = useState("FCFA"); // État pour la devise
   const [errorMsg, setErrorMsg] = useState("");
 
   const [formData, setFormData] = useState({
@@ -20,15 +21,31 @@ export default function NewOrder() {
     status: "en_attente",
   });
 
-  // 1. SÉCURITÉ : Vérification session
+  // 1. SÉCURITÉ & CONFIGURATION
   useEffect(() => {
-    const checkUser = async () => {
+    const initPage = async () => {
+      // A. Vérifier Session
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (!session) router.push("/login");
+      if (!session) {
+        router.push("/login");
+        return;
+      }
+
+      // B. Récupérer la devise de l'atelier
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("currency")
+        .eq("id", session.user.id)
+        .single();
+
+      if (profile?.currency) {
+        setCurrency(profile.currency);
+      }
     };
-    checkUser();
+
+    initPage();
   }, [router]);
 
   const handleChange = (
@@ -49,11 +66,9 @@ export default function NewOrder() {
 
     if (!params?.id) return;
 
-    // 2. RÉCUPÉRATION USER
     const {
       data: { session },
     } = await supabase.auth.getSession();
-
     if (!session) {
       router.push("/login");
       return;
@@ -61,7 +76,6 @@ export default function NewOrder() {
 
     const priceInt = formData.price ? parseInt(formData.price) : 0;
 
-    // 3. ENVOI
     const { error } = await supabase.from("orders").insert([
       {
         client_id: params.id,
@@ -117,7 +131,7 @@ export default function NewOrder() {
               <div className="relative">
                 <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <input
-                  id="title" // AJOUT DE L'ID
+                  id="title"
                   type="text"
                   name="title"
                   required
@@ -130,20 +144,20 @@ export default function NewOrder() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {/* Prix */}
+              {/* Prix DYNAMIQUE */}
               <div>
                 <label
                   htmlFor="price"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  Prix (FCFA)
+                  Prix ({currency})
                 </label>
                 <input
-                  id="price" // AJOUT DE L'ID
+                  id="price"
                   type="number"
                   name="price"
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black focus:border-transparent outline-none transition-all"
-                  placeholder="25000"
+                  placeholder="0"
                   value={formData.price}
                   onChange={handleChange}
                 />
@@ -155,12 +169,12 @@ export default function NewOrder() {
                   htmlFor="deadline"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  Date de livraison
+                  Livraison
                 </label>
                 <div className="relative">
                   <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
                   <input
-                    id="deadline" // AJOUT DE L'ID
+                    id="deadline"
                     type="date"
                     name="deadline"
                     required
@@ -181,7 +195,7 @@ export default function NewOrder() {
                 Détails (Tissu, modifications...)
               </label>
               <textarea
-                id="description" // AJOUT DE L'ID
+                id="description"
                 name="description"
                 rows={3}
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black focus:border-transparent outline-none transition-all resize-none"
@@ -200,7 +214,7 @@ export default function NewOrder() {
                 Statut initial
               </label>
               <select
-                id="status" // AJOUT DE L'ID
+                id="status"
                 name="status"
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black focus:border-transparent outline-none transition-all bg-white"
                 value={formData.status}
