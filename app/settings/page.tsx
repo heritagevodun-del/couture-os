@@ -15,6 +15,7 @@ import {
   Phone,
   Save,
   Loader2,
+  Coins, // AJOUT : Icône pour la monnaie
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -34,6 +35,7 @@ export default function SettingsPage() {
     shop_name: "",
     shop_address: "",
     shop_phone: "",
+    currency: "FCFA", // AJOUT : Valeur par défaut
   });
 
   // --- 1. CHARGEMENT DES DONNÉES ---
@@ -57,6 +59,7 @@ export default function SettingsPage() {
             shop_name: data.shop_name || "",
             shop_address: data.shop_address || "",
             shop_phone: data.shop_phone || "",
+            currency: data.currency || "FCFA", // AJOUT : Récupération de la devise
           });
         }
       }
@@ -81,6 +84,7 @@ export default function SettingsPage() {
       shop_name: profile.shop_name,
       shop_address: profile.shop_address,
       shop_phone: profile.shop_phone,
+      currency: profile.currency, // AJOUT : Sauvegarde de la devise
       updated_at: new Date().toISOString(),
     });
 
@@ -91,7 +95,7 @@ export default function SettingsPage() {
     } else {
       setMessage({
         type: "success",
-        text: "Infos de l'atelier mises à jour !",
+        text: "Paramètres mis à jour !",
       });
       // Effacer le message après 3 secondes
       setTimeout(() => setMessage(null), 3000);
@@ -131,7 +135,7 @@ export default function SettingsPage() {
         router.push("/login");
       }
     } catch (error) {
-      console.error(error); // Utilisation de la variable error pour corriger le linter
+      console.error(error);
       alert("Une erreur est survenue lors de la suppression.");
       setLoading(false);
     }
@@ -149,7 +153,6 @@ export default function SettingsPage() {
             <ArrowLeft size={20} />
           </Link>
           <div>
-            {/* Correction : l'Atelier avec &apos; */}
             <h1 className="text-2xl font-bold text-gray-900">
               Paramètres de l&apos;Atelier
             </h1>
@@ -189,7 +192,6 @@ export default function SettingsPage() {
           <div className="space-y-5">
             {/* Nom de l'atelier */}
             <div>
-              {/* Correction : l'atelier avec &apos; */}
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Nom de l&apos;atelier / Marque
               </label>
@@ -242,6 +244,28 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
+            </div>
+
+            {/* --- AJOUT : SÉLECTEUR DE DEVISE --- */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Devise (Monnaie)
+              </label>
+              <div className="relative">
+                <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <input
+                  type="text"
+                  placeholder="Ex: FCFA, €, $, Naira"
+                  className="w-full pl-10 pr-3 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none transition"
+                  value={profile.currency}
+                  onChange={(e) =>
+                    setProfile({ ...profile, currency: e.target.value })
+                  }
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                Saisissez le symbole de votre monnaie (ex: €).
+              </p>
             </div>
 
             <div className="pt-2 flex justify-end">

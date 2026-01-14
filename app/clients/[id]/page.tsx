@@ -10,10 +10,13 @@ import {
   MessageCircle,
   BellRing,
   CheckCircle2,
+  Edit2,
+  X,
+  Save,
+  Loader2, // On l'utilise maintenant !
 } from "lucide-react";
 import { generateInvoice } from "../../utils/invoiceGenerator";
 
-// --- 1. CONFIGURATION DES MESURES ---
 const STANDARD_MEASUREMENTS = [
   { key: "poitrine", label: "Tour de Poitrine" },
   { key: "taille", label: "Tour de Taille" },
@@ -25,7 +28,6 @@ const STANDARD_MEASUREMENTS = [
   { key: "dos", label: "Longueur Dos" },
 ];
 
-// --- TYPES ---
 type Client = {
   id: string;
   full_name: string;
@@ -50,26 +52,32 @@ type ShopProfile = {
   shop_address: string;
   shop_phone: string;
   email: string;
+  currency: string;
 };
 
 export default function ClientDetails() {
   const params = useParams();
   const router = useRouter();
 
-  // Données
   const [client, setClient] = useState<Client | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [shopProfile, setShopProfile] = useState<ShopProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Édition
   const [isEditingMeasurements, setIsEditingMeasurements] = useState(false);
   const [tempMeasurements, setTempMeasurements] = useState<
     Record<string, string>
   >({});
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
-  // --- CHARGEMENT ---
+  const [isEditingClient, setIsEditingClient] = useState(false);
+  const [tempClientData, setTempClientData] = useState({
+    full_name: "",
+    phone: "",
+    city: "",
+    notes: "",
+  });
+
   useEffect(() => {
     const fetchData = async () => {
       if (!params?.id) return;
@@ -78,7 +86,6 @@ export default function ClientDetails() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      // 1. Charger le Profil Atelier
       if (user) {
         const { data: profile } = await supabase
           .from("profiles")
@@ -92,41 +99,61 @@ export default function ClientDetails() {
             shop_address: profile.shop_address,
             shop_phone: profile.shop_phone,
             email: user.email || "",
+            currency: profile.currency || "FCFA",
           });
         }
       }
 
-      // 2. Charger le client
-      const { data: clientData, error: clientError } = await supabase
+      const { data: clientData } = await supabase
         .from("clients")
         .select("*")
         .eq("id", params.id)
         .single();
 
-      if (clientError) {
-        console.error("Erreur client:", clientError);
-      } else {
+      if (clientData) {
         setClient(clientData);
         setTempMeasurements(clientData.measurements || {});
+        setTempClientData({
+          full_name: clientData.full_name,
+          phone: clientData.phone,
+          city: clientData.city,
+          notes: clientData.notes || "",
+        });
       }
 
-      // 3. Charger les commandes
-      const { data: ordersData, error: ordersError } = await supabase
+      const { data: ordersData } = await supabase
         .from("orders")
         .select("*")
         .eq("client_id", params.id)
         .order("created_at", { ascending: false });
 
-      if (ordersError) console.error("Erreur commandes:", ordersError);
-      else setOrders(ordersData || []);
-
+      setOrders(ordersData || []);
       setLoading(false);
     };
 
     fetchData();
   }, [params?.id]);
 
-  // --- LOGIQUE WHATSAPP ---
+  const handleUpdateClient = async () => {
+    if (!client) return;
+    const { error } = await supabase
+      .from("clients")
+      .update({
+        full_name: tempClientData.full_name,
+        phone: tempClientData.phone,
+        city: tempClientData.city,
+        notes: tempClientData.notes,
+      })
+      .eq("id", client.id);
+
+    if (error) {
+      alert("Erreur lors de la mise à jour : " + error.message);
+    } else {
+      setClient({ ...client, ...tempClientData });
+      setIsEditingClient(false);
+    }
+  };
+
   const sendWhatsAppMessage = (type: "reminder" | "ready", order: Order) => {
     if (!client || !client.phone) {
       alert("Ajoutez d'abord un numéro de téléphone au client.");
@@ -134,6 +161,7 @@ export default function ClientDetails() {
     }
 
     const shopName = shopProfile?.shop_name || "L'Atelier";
+    const currency = shopProfile?.currency || "FCFA";
     const cleanPhone = client.phone.replace(/[^0-9]/g, "");
 
     let message = "";
@@ -143,7 +171,7 @@ export default function ClientDetails() {
         client.full_name
       }, ici ${shopName}. 👋\n\nPetit rappel concernant votre commande "${
         order.title
-      }".\nMontant total : ${order.price.toLocaleString()} FCFA.\n\nMerci de votre confiance ! 🧵`;
+      }".\nMontant total : ${order.price.toLocaleString()} ${currency}.\n\nMerci de votre confiance ! 🧵`;
     } else if (type === "ready") {
       message = `Bonne nouvelle ${client.full_name} ! 🎉\n\nVotre tenue "${order.title}" est terminée et prête à être récupérée à ${shopName}.\n\nÀ très vite !`;
     }
@@ -154,17 +182,19 @@ export default function ClientDetails() {
     window.open(url, "_blank");
   };
 
-  // --- LOGIQUE FACTURE PDF ---
   const handleDownloadInvoice = (e: React.MouseEvent, order: Order) => {
     e.stopPropagation();
-
     if (!client) return;
+
+    const index = orders.findIndex((o) => o.id === order.id);
+    const sequentialNumber = orders.length - index;
 
     const currentShop = shopProfile || {
       shop_name: "Votre Atelier",
       shop_address: "",
       shop_phone: "",
       email: "",
+      currency: "FCFA",
     };
 
     generateInvoice({
@@ -173,6 +203,7 @@ export default function ClientDetails() {
         address: currentShop.shop_address,
         phone: currentShop.shop_phone,
         email: currentShop.email,
+        currency: currentShop.currency,
       },
       client: {
         name: client.full_name,
@@ -187,17 +218,17 @@ export default function ClientDetails() {
         description: order.description,
         price: order.price,
         status: order.status,
+        client_order_number: sequentialNumber,
       },
     });
   };
 
-  // --- LOGIQUE SUPPRESSION CLIENT ---
   const handleDeleteClient = async () => {
     if (!client) return;
-    const confirm = window.confirm(
-      "🛑 ATTENTION : Supprimer ce client et toutes ses commandes ?"
-    );
-    if (!confirm) return;
+    if (
+      !confirm("🛑 ATTENTION : Supprimer ce client et toutes ses commandes ?")
+    )
+      return;
     setLoading(true);
 
     await supabase.from("orders").delete().eq("client_id", client.id);
@@ -214,7 +245,6 @@ export default function ClientDetails() {
     }
   };
 
-  // --- LOGIQUE MESURES & COMMANDES ---
   const handleSaveMeasurements = async () => {
     if (!client) return;
     const { error } = await supabase
@@ -272,17 +302,18 @@ export default function ClientDetails() {
       .slice(0, 2);
   };
 
+  // --- CORRECTION ICI : Utilisation de Loader2 ---
   if (loading)
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="animate-pulse">Chargement...</p>
+        <Loader2 className="animate-spin text-gray-400" size={40} />
       </div>
     );
+
   if (!client) return <p className="text-center p-8">Client introuvable.</p>;
 
   return (
     <main className="min-h-screen bg-gray-50 pb-20">
-      {/* Navigation */}
       <div className="bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 z-10">
         <Link
           href="/"
@@ -293,16 +324,25 @@ export default function ClientDetails() {
       </div>
 
       <div className="max-w-xl mx-auto p-6 flex flex-col gap-6">
-        {/* --- CARTE PROFIL --- */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col items-center text-center relative">
-          <button
-            onClick={handleDeleteClient}
-            className="absolute top-4 right-4 text-gray-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all"
-            title="Supprimer ce client"
-            aria-label="Supprimer ce client" // CORRECTION A11Y
-          >
-            <Trash2 size={20} />
-          </button>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col items-center text-center relative group">
+          <div className="absolute top-4 right-4 flex gap-2">
+            <button
+              onClick={() => setIsEditingClient(true)}
+              className="p-2 bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 rounded-full transition-all"
+              title="Modifier les infos client"
+              aria-label="Modifier les infos client"
+            >
+              <Edit2 size={18} />
+            </button>
+            <button
+              onClick={handleDeleteClient}
+              className="p-2 bg-gray-50 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-full transition-all"
+              title="Supprimer ce client"
+              aria-label="Supprimer ce client"
+            >
+              <Trash2 size={18} />
+            </button>
+          </div>
 
           <div className="w-24 h-24 bg-black text-white rounded-full flex items-center justify-center text-3xl font-bold shadow-md mb-4 border-4 border-gray-50">
             {getInitials(client.full_name)}
@@ -346,7 +386,6 @@ export default function ClientDetails() {
           )}
         </div>
 
-        {/* --- COMMANDES --- */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -386,7 +425,7 @@ export default function ClientDetails() {
                       </p>
                     </div>
                     <p className="font-bold text-gray-900">
-                      {order.price.toLocaleString()} F
+                      {order.price.toLocaleString()} {shopProfile?.currency}
                     </p>
                   </div>
 
@@ -453,7 +492,6 @@ export default function ClientDetails() {
           </div>
         </div>
 
-        {/* --- MESURES --- */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
             <h2 className="text-lg font-bold text-gray-900">📏 Mesures</h2>
@@ -478,7 +516,6 @@ export default function ClientDetails() {
                       {m.label}
                     </label>
                     <div className="relative">
-                      {/* CORRECTION A11Y : Ajout de id et lien avec htmlFor */}
                       <input
                         id={m.key}
                         type="number"
@@ -533,7 +570,113 @@ export default function ClientDetails() {
         </div>
       </div>
 
-      {/* --- MODAL EDIT ORDER (CORRECTIONS A11Y APPLIQUÉES ICI) --- */}
+      {isEditingClient && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in">
+            <h3 className="text-lg font-bold mb-4 border-b pb-2 flex items-center justify-between">
+              Modifier le client
+              <button
+                onClick={() => setIsEditingClient(false)}
+                className="text-gray-400 hover:text-black"
+                aria-label="Fermer"
+              >
+                <X size={20} />
+              </button>
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label
+                  htmlFor="client-name"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Nom complet
+                </label>
+                <input
+                  id="client-name"
+                  type="text"
+                  className="w-full border rounded-lg p-3"
+                  value={tempClientData.full_name}
+                  onChange={(e) =>
+                    setTempClientData({
+                      ...tempClientData,
+                      full_name: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="client-phone"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Téléphone
+                </label>
+                <input
+                  id="client-phone"
+                  type="text"
+                  className="w-full border rounded-lg p-3"
+                  value={tempClientData.phone}
+                  onChange={(e) =>
+                    setTempClientData({
+                      ...tempClientData,
+                      phone: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="client-city"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Ville
+                </label>
+                <input
+                  id="client-city"
+                  type="text"
+                  className="w-full border rounded-lg p-3"
+                  value={tempClientData.city}
+                  onChange={(e) =>
+                    setTempClientData({
+                      ...tempClientData,
+                      city: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="client-notes"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Notes
+                </label>
+                <textarea
+                  id="client-notes"
+                  className="w-full border rounded-lg p-3"
+                  rows={3}
+                  value={tempClientData.notes}
+                  onChange={(e) =>
+                    setTempClientData({
+                      ...tempClientData,
+                      notes: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="pt-2">
+                <button
+                  onClick={handleUpdateClient}
+                  className="w-full bg-black text-white font-bold py-3 rounded-xl hover:bg-gray-800 flex items-center justify-center gap-2"
+                >
+                  <Save size={18} /> Enregistrer les modifications
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editingOrder && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in">
@@ -541,7 +684,6 @@ export default function ClientDetails() {
               Modifier la commande
             </h3>
             <div className="space-y-4">
-              {/* Titre */}
               <div>
                 <label
                   htmlFor="edit-title"
@@ -559,8 +701,6 @@ export default function ClientDetails() {
                   }
                 />
               </div>
-
-              {/* Prix */}
               <div>
                 <label
                   htmlFor="edit-price"
@@ -581,8 +721,6 @@ export default function ClientDetails() {
                   }
                 />
               </div>
-
-              {/* Statut */}
               <div>
                 <label
                   htmlFor="edit-status"
@@ -595,7 +733,10 @@ export default function ClientDetails() {
                   className="w-full border rounded-lg p-2 bg-white"
                   value={editingOrder.status}
                   onChange={(e) =>
-                    setEditingOrder({ ...editingOrder, status: e.target.value })
+                    setEditingOrder({
+                      ...editingOrder,
+                      status: e.target.value,
+                    })
                   }
                 >
                   <option value="en_attente">🟡 En attente</option>
@@ -603,7 +744,6 @@ export default function ClientDetails() {
                   <option value="termine">🟢 Terminé</option>
                 </select>
               </div>
-
               <div className="flex flex-col gap-3 pt-4">
                 <button
                   onClick={handleUpdateOrder}
