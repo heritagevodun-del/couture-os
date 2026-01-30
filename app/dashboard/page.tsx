@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Logo from "@/components/Logo"; // Assure-toi que ce composant existe
+import Logo from "@/components/Logo";
 import {
   Settings,
   UserPlus,
@@ -27,14 +27,12 @@ type DashboardStats = {
   currency: string;
 };
 
-// On définit précisément ce que Supabase nous renvoie
 type OrderWithClient = {
   id: string;
   title: string;
   deadline: string | null;
   status: string;
   price: number;
-  // Supabase renvoie un objet (ou null) pour la relation One-to-Many
   clients: { full_name: string } | null;
 };
 
@@ -64,7 +62,7 @@ export default function Dashboard() {
         return;
       }
 
-      // 2. Récupérer le Profil (Nom atelier + Devise)
+      // 2. Récupérer le Profil
       const { data: profile } = await supabase
         .from("profiles")
         .select("shop_name, currency")
@@ -74,7 +72,7 @@ export default function Dashboard() {
       const currency = profile?.currency || "FCFA";
       setShopName(profile?.shop_name || "L'Atelier");
 
-      // 3. Récupérer les Commandes (Avec le nom du client via la jointure)
+      // 3. Récupérer les Commandes
       const { data: orders } = await supabase
         .from("orders")
         .select(
@@ -93,9 +91,7 @@ export default function Dashboard() {
         .eq("user_id", user.id);
 
       // --- CALCULS ---
-      // On force le typage ici car on sait ce que Supabase renvoie grâce à notre requête select()
       const safeOrders = (orders || []) as unknown as OrderWithClient[];
-
       const revenue = safeOrders.reduce((sum, o) => sum + (o.price || 0), 0);
       const activeOrders = safeOrders.filter(
         (o) => o.status !== "termine" && o.status !== "annule",
@@ -108,7 +104,6 @@ export default function Dashboard() {
         currency: currency,
       });
 
-      // On garde les 5 dernières commandes actives pour l'affichage
       setRecentOrders(activeOrders.slice(0, 5));
       setLoading(false);
     };
@@ -116,7 +111,7 @@ export default function Dashboard() {
     fetchData();
   }, [router]);
 
-  // Helper pour les couleurs de badge (Style V2)
+  // Helper couleurs (Style V2)
   const getStatusColor = (status: string) => {
     switch (status) {
       case "en_attente":
@@ -145,8 +140,8 @@ export default function Dashboard() {
 
   return (
     <main className="min-h-screen bg-[#F8F9FA] dark:bg-neutral-950 pb-24 transition-colors duration-300">
-      {/* --- HEADER --- */}
-      <header className="bg-white dark:bg-neutral-900 px-6 pt-12 pb-12 border-b border-gray-100 dark:border-gray-800 shadow-sm sticky top-0 z-20 transition-colors">
+      {/* --- HEADER (Correction: Retrait de 'sticky' pour libérer l'espace) --- */}
+      <header className="bg-white dark:bg-neutral-900 px-6 pt-12 pb-12 border-b border-gray-100 dark:border-gray-800 shadow-sm z-20 transition-colors">
         <div className="max-w-5xl mx-auto">
           <div className="flex justify-between items-start mb-8">
             <div>
@@ -268,7 +263,6 @@ export default function Dashboard() {
             <h2 className="text-sm font-bold text-gray-900 dark:text-gray-200 uppercase tracking-wide flex items-center gap-2">
               <Clock size={16} /> Production en cours
             </h2>
-            {/* Lien temporaire vers clients en attendant la page commandes */}
             <Link
               href="/clients"
               className="text-xs font-bold text-[#D4AF37] hover:underline flex items-center gap-1"
