@@ -1,16 +1,29 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { supabase } from "../../../lib/supabase";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Calendar, Loader2, Tag } from "lucide-react";
+import {
+  ArrowLeft,
+  Calendar,
+  Loader2,
+  Tag,
+  FileText,
+  Banknote,
+} from "lucide-react";
 
-export default function NewOrder() {
-  const params = useParams();
+export default function NewOrder({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  // On décode les paramètres de manière asynchrone (Standard Next.js 15)
+  const { id } = use(params);
   const router = useRouter();
+
   const [loading, setLoading] = useState(false);
-  const [currency, setCurrency] = useState("FCFA"); // État pour la devise
+  const [currency, setCurrency] = useState("FCFA");
   const [errorMsg, setErrorMsg] = useState("");
 
   const [formData, setFormData] = useState({
@@ -21,14 +34,15 @@ export default function NewOrder() {
     status: "en_attente",
   });
 
-  // 1. SÉCURITÉ & CONFIGURATION
+  // 1. CONFIGURATION
   useEffect(() => {
     const initPage = async () => {
-      // A. Vérifier Session
+      // A. Vérifier Session (getUser est plus sécurisé que getSession)
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
         router.push("/login");
         return;
       }
@@ -37,7 +51,7 @@ export default function NewOrder() {
       const { data: profile } = await supabase
         .from("profiles")
         .select("currency")
-        .eq("id", session.user.id)
+        .eq("id", user.id)
         .single();
 
       if (profile?.currency) {
@@ -51,7 +65,7 @@ export default function NewOrder() {
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >
+    >,
   ) => {
     setFormData({
       ...formData,
@@ -64,12 +78,13 @@ export default function NewOrder() {
     setLoading(true);
     setErrorMsg("");
 
-    if (!params?.id) return;
+    if (!id) return;
 
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
       router.push("/login");
       return;
     }
@@ -78,169 +93,187 @@ export default function NewOrder() {
 
     const { error } = await supabase.from("orders").insert([
       {
-        client_id: params.id,
+        client_id: id,
         title: formData.title,
         price: priceInt,
-        deadline: formData.deadline,
+        deadline: formData.deadline || null, // null si vide
         description: formData.description,
         status: formData.status,
-        user_id: session.user.id,
+        user_id: user.id,
       },
     ]);
 
     if (error) {
-      setErrorMsg(error.message);
+      setErrorMsg("Erreur : " + error.message);
       setLoading(false);
     } else {
-      router.push(`/clients/${params.id}`);
+      router.push(`/clients/${id}`);
       router.refresh();
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+    <div className="min-h-screen bg-gray-50 dark:bg-neutral-950 p-4 transition-colors duration-300">
+      <div className="max-w-2xl mx-auto">
         {/* --- HEADER --- */}
-        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+        <div className="flex items-center gap-4 mb-6">
           <Link
-            href={`/clients/${params?.id}`}
-            className="p-2 bg-white rounded-lg border border-gray-200 text-gray-500 hover:text-black hover:border-gray-300 transition"
+            href={`/clients/${id}`}
+            className="p-2 bg-white dark:bg-neutral-900 rounded-full border border-gray-200 dark:border-gray-800 text-gray-500 hover:text-black dark:hover:text-white transition shadow-sm"
           >
-            <ArrowLeft size={18} />
+            <ArrowLeft size={20} />
           </Link>
-          <h1 className="text-lg font-bold text-gray-900">Nouvelle Commande</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            Nouvelle Commande
+          </h1>
         </div>
 
-        {/* --- FORMULAIRE --- */}
-        <div className="p-6 md:p-8">
-          {errorMsg && (
-            <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
-              {errorMsg}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Titre */}
-            <div>
-              <label
-                htmlFor="title"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Modèle / Titre
-              </label>
-              <div className="relative">
-                <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <input
-                  id="title"
-                  type="text"
-                  name="title"
-                  required
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black focus:border-transparent outline-none transition-all"
-                  placeholder="Ex: Robe de soirée rouge"
-                  value={formData.title}
-                  onChange={handleChange}
-                />
+        {/* --- CARD FORMULAIRE --- */}
+        <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+          <div className="p-6 md:p-8">
+            {errorMsg && (
+              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl border border-red-100 dark:border-red-900/50 flex items-center gap-2">
+                ⚠️ {errorMsg}
               </div>
-            </div>
+            )}
 
-            <div className="grid grid-cols-2 gap-4">
-              {/* Prix DYNAMIQUE */}
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Titre */}
               <div>
                 <label
-                  htmlFor="price"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  htmlFor="title"
+                  className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"
                 >
-                  Prix ({currency})
-                </label>
-                <input
-                  id="price"
-                  type="number"
-                  name="price"
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black focus:border-transparent outline-none transition-all"
-                  placeholder="0"
-                  value={formData.price}
-                  onChange={handleChange}
-                />
-              </div>
-
-              {/* Date limite */}
-              <div>
-                <label
-                  htmlFor="deadline"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Livraison
+                  Modèle / Titre
                 </label>
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
                   <input
-                    id="deadline"
-                    type="date"
-                    name="deadline"
+                    id="title"
+                    type="text"
+                    name="title"
                     required
-                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black focus:border-transparent outline-none transition-all text-sm"
-                    value={formData.deadline}
+                    className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all dark:text-white font-medium"
+                    placeholder="Ex: Robe de soirée rouge"
+                    value={formData.title}
                     onChange={handleChange}
                   />
                 </div>
               </div>
-            </div>
 
-            {/* Description */}
-            <div>
-              <label
-                htmlFor="description"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Détails (Tissu, modifications...)
-              </label>
-              <textarea
-                id="description"
-                name="description"
-                rows={3}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black focus:border-transparent outline-none transition-all resize-none"
-                placeholder="Pagne Woodin, col V, doublure..."
-                value={formData.description}
-                onChange={handleChange}
-              />
-            </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Prix */}
+                <div>
+                  <label
+                    htmlFor="price"
+                    className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"
+                  >
+                    Prix ({currency})
+                  </label>
+                  <div className="relative">
+                    <Banknote className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+                    <input
+                      id="price"
+                      type="number"
+                      name="price"
+                      className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all dark:text-white font-medium"
+                      placeholder="0"
+                      value={formData.price}
+                      onChange={handleChange}
+                    />
+                  </div>
+                </div>
 
-            {/* Statut */}
-            <div>
-              <label
-                htmlFor="status"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Statut initial
-              </label>
-              <select
-                id="status"
-                name="status"
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black focus:border-transparent outline-none transition-all bg-white"
-                value={formData.status}
-                onChange={handleChange}
-              >
-                <option value="en_attente">🟡 En attente</option>
-                <option value="en_cours">🔵 En cours</option>
-                <option value="termine">🟢 Terminé</option>
-              </select>
-            </div>
+                {/* Date limite */}
+                <div>
+                  <label
+                    htmlFor="deadline"
+                    className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"
+                  >
+                    Date de Livraison
+                  </label>
+                  <div className="relative">
+                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5 pointer-events-none" />
+                    <input
+                      id="deadline"
+                      type="date"
+                      name="deadline"
+                      className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all dark:text-white font-medium appearance-none" // appearance-none pour cleaner le style natif sur mobile
+                      value={formData.deadline}
+                      onChange={handleChange}
+                    />
+                  </div>
+                </div>
+              </div>
 
-            {/* Bouton Créer */}
-            <div className="pt-4">
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-gray-200"
-              >
-                {loading ? (
-                  <Loader2 className="animate-spin h-5 w-5" />
-                ) : (
-                  "Créer la commande"
-                )}
-              </button>
-            </div>
-          </form>
+              {/* Description */}
+              <div>
+                <label
+                  htmlFor="description"
+                  className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"
+                >
+                  Détails (Tissu, modifications...)
+                </label>
+                <div className="relative">
+                  <FileText className="absolute left-4 top-4 text-gray-400 h-5 w-5" />
+                  <textarea
+                    id="description"
+                    name="description"
+                    rows={4}
+                    className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all resize-none dark:text-white"
+                    placeholder="Pagne Woodin, col V, doublure en soie..."
+                    value={formData.description}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+
+              {/* Statut */}
+              <div>
+                <label
+                  htmlFor="status"
+                  className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"
+                >
+                  Statut initial
+                </label>
+                <div className="relative">
+                  <select
+                    id="status"
+                    name="status"
+                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all dark:text-white font-medium appearance-none cursor-pointer"
+                    value={formData.status}
+                    onChange={handleChange}
+                  >
+                    <option value="en_attente">
+                      🟡 En attente (Pas commencé)
+                    </option>
+                    <option value="en_cours">🔵 En cours (Fabrication)</option>
+                    <option value="essayage">🟣 Essayage</option>
+                    <option value="termine">🟢 Terminé (Prêt à livrer)</option>
+                  </select>
+                  {/* Petite flèche custom pour le select */}
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                    ▼
+                  </div>
+                </div>
+              </div>
+
+              {/* Bouton Créer */}
+              <div className="pt-4">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-4 bg-black dark:bg-white text-white dark:text-black font-bold text-lg rounded-xl hover:scale-[1.02] transition-transform disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2 shadow-xl shadow-gray-200 dark:shadow-none"
+                >
+                  {loading ? (
+                    <Loader2 className="animate-spin h-6 w-6" />
+                  ) : (
+                    "Créer la commande"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>

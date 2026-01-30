@@ -1,7 +1,13 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-// Définition des types
+// Interface pour ajouter la propriété manquante au type jsPDF standard
+interface jsPDFWithAutoTable extends jsPDF {
+  lastAutoTable: {
+    finalY: number;
+  };
+}
+
 interface InvoiceData {
   shop: {
     name: string;
@@ -31,123 +37,77 @@ export const generateInvoice = (data: InvoiceData) => {
   const doc = new jsPDF();
   const currency = data.shop.currency || "FCFA";
 
-  // --- FONCTION FORMATAGE PRIX ---
-  // Met un espace entre les milliers (ex: 10 000)
-  const formatPrice = (price: number) => {
-    return price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  };
-
-  // --- 1. EN-TÊTE (ATELIER) ---
-  doc.setFontSize(20);
+  // --- EN-TÊTE ---
+  doc.setFontSize(22);
   doc.setFont("helvetica", "bold");
-  doc.text(data.shop.name || "ATELIER COUTURE", 20, 20);
+  doc.text(data.shop.name.toUpperCase(), 20, 20);
 
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.text(data.shop.address || "", 20, 27);
-  doc.text(data.shop.phone || "", 20, 32);
-  doc.text(data.shop.email || "", 20, 37);
+  doc.text(data.shop.phone || "", 20, 28);
+  doc.text(data.shop.address || "", 20, 33);
 
-  // --- 2. BLOC INFO FACTURE (DROITE) ---
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
-  doc.text("FACTURE / REÇU", 190, 20, { align: "right" });
+  doc.setFontSize(26);
+  doc.setTextColor(200, 200, 200);
+  doc.text("FACTURE", 150, 25);
+  doc.setTextColor(0, 0, 0);
 
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  // Numéro de commande propre (#1, #2...)
-  doc.text(`N° Commande : #${data.order.client_order_number}`, 190, 27, {
-    align: "right",
-  });
-  doc.text(`Date : ${data.order.date}`, 190, 32, { align: "right" });
-
-  // --- 3. INFOS CLIENT ---
-  doc.setDrawColor(220);
-  doc.line(20, 45, 190, 45);
-
+  // --- INFOS ---
   doc.setFontSize(11);
+
   doc.setFont("helvetica", "bold");
-  doc.text("FACTURÉ À :", 20, 55);
-
-  doc.setFontSize(11);
+  doc.text("Facturé à :", 20, 50);
   doc.setFont("helvetica", "normal");
-  doc.text(data.client.name.toUpperCase(), 20, 62);
-  doc.text(data.client.city || "Ville non renseignée", 20, 67);
-  doc.text(data.client.phone || "", 20, 72);
+  doc.text(data.client.name, 20, 56);
+  doc.text(data.client.phone || "", 20, 61);
+  doc.text(data.client.city || "", 20, 66);
 
-  // --- 4. TABLEAU DES PRESTATIONS ---
-  const tableColumn = ["DESCRIPTION", "LIVRAISON", "MONTANT"];
-  const tableRows = [
-    [
-      data.order.title +
-        (data.order.description ? `\n\n${data.order.description}` : ""),
-      new Date(data.order.deadline).toLocaleDateString("fr-FR"),
-      `${formatPrice(data.order.price)} ${currency}`,
-    ],
-  ];
+  const date = new Date().toLocaleDateString("fr-FR");
+  const deadline = new Date(data.order.deadline).toLocaleDateString("fr-FR");
 
+  doc.text(`Date : ${date}`, 140, 50);
+  doc.text(`N° Commande : #${data.order.client_order_number}`, 140, 56);
+  doc.text(`Livraison prévue : ${deadline}`, 140, 62);
+
+  // --- TABLEAU ---
   autoTable(doc, {
-    startY: 85,
-    head: [tableColumn],
-    body: tableRows,
+    startY: 80,
+    head: [["Description", "Statut", "Total"]],
+    body: [
+      [
+        data.order.title +
+          (data.order.description ? `\n(${data.order.description})` : ""),
+        data.order.status.replace("_", " ").toUpperCase(),
+        `${data.order.price.toLocaleString()} ${currency}`,
+      ],
+    ],
     theme: "grid",
-    headStyles: {
-      fillColor: [0, 0, 0],
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-      halign: "center",
-    },
+    headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
+    styles: { fontSize: 11, cellPadding: 4 },
     columnStyles: {
       0: { cellWidth: 100 },
-      1: { halign: "center", cellWidth: 40 },
       2: { halign: "right", fontStyle: "bold" },
-    },
-    styles: {
-      fontSize: 10,
-      cellPadding: 6,
-      lineColor: [230, 230, 230],
     },
   });
 
-  // --- 5. TOTAL ET STATUT ---
-
-  // CORRECTION PROPRE : On définit le type exact attendu au lieu de 'any'
-  // Cela satisfait le linter TypeScript strict.
+  // --- TOTAUX ---
+  // Correction ici : on cast doc en notre type personnalisé pour éviter l'erreur TS
   const finalY =
-    (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable
-      .finalY + 10;
+    (doc as unknown as jsPDFWithAutoTable).lastAutoTable.finalY + 10;
 
-  // Ligne de séparation
-  doc.setDrawColor(0, 0, 0);
-  doc.line(120, finalY, 190, finalY);
-
-  // Statut
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  const statusText =
-    data.order.status === "termine" ? "PAYÉ / TERMINÉ" : "EN COURS";
-  doc.text(`Statut : ${statusText}`, 20, finalY + 10);
-
-  // Total
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
-  doc.text("TOTAL", 120, finalY + 10);
-
+  doc.text(`TOTAL À PAYER :`, 130, finalY);
   doc.setFontSize(14);
-  doc.text(`${formatPrice(data.order.price)} ${currency}`, 190, finalY + 10, {
+  doc.text(`${data.order.price.toLocaleString()} ${currency}`, 190, finalY, {
     align: "right",
   });
 
-  // --- 6. PIED DE PAGE ---
-  doc.setFontSize(8);
-  doc.setTextColor(150);
+  doc.setFontSize(10);
   doc.setFont("helvetica", "italic");
+  doc.setTextColor(100, 100, 100);
   doc.text("Merci de votre confiance !", 105, 280, { align: "center" });
 
-  // Sauvegarder
-  doc.save(
-    `Facture_${data.client.name.replace(/\s/g, "_")}_CMD${
-      data.order.client_order_number
-    }.pdf`
-  );
+  const fileName = `Facture_${data.order.title.replace(/\s+/g, "_")}.pdf`;
+  doc.save(fileName);
 };

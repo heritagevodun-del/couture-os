@@ -1,40 +1,36 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { supabase } from "../../lib/supabase";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Trash2,
   FileText,
   MessageCircle,
-  BellRing,
   CheckCircle2,
   Edit2,
   X,
-  Save,
-  Loader2, // On l'utilise maintenant !
+  ArrowLeft,
+  Ruler,
+  ShoppingBag,
+  Phone,
+  MapPin,
+  StickyNote,
+  Loader2,
 } from "lucide-react";
 import { generateInvoice } from "../../utils/invoiceGenerator";
+import { MEASUREMENT_TEMPLATES } from "../../constants/measurements";
 
-const STANDARD_MEASUREMENTS = [
-  { key: "poitrine", label: "Tour de Poitrine" },
-  { key: "taille", label: "Tour de Taille" },
-  { key: "bassin", label: "Tour de Bassin" },
-  { key: "epaule", label: "Épaule à Épaule" },
-  { key: "manche", label: "Longueur Manche" },
-  { key: "longueur_totale", label: "Longueur Totale" },
-  { key: "cuisse", label: "Tour de Cuisse" },
-  { key: "dos", label: "Longueur Dos" },
-];
-
+// --- TYPES ---
 type Client = {
   id: string;
   full_name: string;
   phone: string;
   city: string;
   notes: string;
-  measurements: Record<string, string> | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  measurements: any;
 };
 
 type Order = {
@@ -55,8 +51,12 @@ type ShopProfile = {
   currency: string;
 };
 
-export default function ClientDetails() {
-  const params = useParams();
+export default function ClientDetails({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
   const router = useRouter();
 
   const [client, setClient] = useState<Client | null>(null);
@@ -64,11 +64,11 @@ export default function ClientDetails() {
   const [shopProfile, setShopProfile] = useState<ShopProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // États d'édition
   const [isEditingMeasurements, setIsEditingMeasurements] = useState(false);
   const [tempMeasurements, setTempMeasurements] = useState<
     Record<string, string>
   >({});
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   const [isEditingClient, setIsEditingClient] = useState(false);
   const [tempClientData, setTempClientData] = useState({
@@ -78,36 +78,43 @@ export default function ClientDetails() {
     notes: "",
   });
 
+  // --- 1. CHARGEMENT DES DONNÉES ---
   useEffect(() => {
     const fetchData = async () => {
-      if (!params?.id) return;
+      if (!id) return;
 
+      // CORRECTION ICI : on utilise getUser() au lieu de getSession()
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (user) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single();
-
-        if (profile) {
-          setShopProfile({
-            shop_name: profile.shop_name,
-            shop_address: profile.shop_address,
-            shop_phone: profile.shop_phone,
-            email: user.email || "",
-            currency: profile.currency || "FCFA",
-          });
-        }
+      if (!user) {
+        router.push("/login");
+        return;
       }
 
+      // A. Profil Boutique
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+      if (profile) {
+        setShopProfile({
+          shop_name: profile.shop_name,
+          shop_address: profile.shop_address || "",
+          shop_phone: profile.shop_phone || "",
+          email: user.email || "",
+          currency: profile.currency || "FCFA",
+        });
+      }
+
+      // B. Client
       const { data: clientData } = await supabase
         .from("clients")
         .select("*")
-        .eq("id", params.id)
+        .eq("id", id)
         .single();
 
       if (clientData) {
@@ -121,10 +128,11 @@ export default function ClientDetails() {
         });
       }
 
+      // C. Commandes
       const { data: ordersData } = await supabase
         .from("orders")
         .select("*")
-        .eq("client_id", params.id)
+        .eq("client_id", id)
         .order("created_at", { ascending: false });
 
       setOrders(ordersData || []);
@@ -132,8 +140,23 @@ export default function ClientDetails() {
     };
 
     fetchData();
-  }, [params?.id]);
+  }, [id, router]);
 
+  // --- 2. LOGIQUE MÉTIER ---
+
+  const currentTemplateId =
+    client?.measurements?._template_id || "femme_standard";
+  const currentTemplate =
+    MEASUREMENT_TEMPLATES.find((t) => t.id === currentTemplateId) ||
+    MEASUREMENT_TEMPLATES[0];
+
+  const getLabelForField = (key: string) => {
+    if (key.startsWith("_")) return null;
+    const field = currentTemplate.fields.find((f) => f.id === key);
+    return field ? field.label : key.replace(/_/g, " ");
+  };
+
+  // Mise à jour infos client
   const handleUpdateClient = async () => {
     if (!client) return;
     const { error } = await supabase
@@ -147,41 +170,42 @@ export default function ClientDetails() {
       .eq("id", client.id);
 
     if (error) {
-      alert("Erreur lors de la mise à jour : " + error.message);
+      alert("Erreur : " + error.message);
     } else {
       setClient({ ...client, ...tempClientData });
       setIsEditingClient(false);
     }
   };
 
-  const sendWhatsAppMessage = (type: "reminder" | "ready", order: Order) => {
-    if (!client || !client.phone) {
-      alert("Ajoutez d'abord un numéro de téléphone au client.");
-      return;
+  // Sauvegarde Mesures
+  const handleSaveMeasurements = async () => {
+    if (!client) return;
+    const { error } = await supabase
+      .from("clients")
+      .update({ measurements: tempMeasurements })
+      .eq("id", client.id);
+    if (!error) {
+      setClient({ ...client, measurements: tempMeasurements });
+      setIsEditingMeasurements(false);
     }
-
-    const shopName = shopProfile?.shop_name || "L'Atelier";
-    const currency = shopProfile?.currency || "FCFA";
-    const cleanPhone = client.phone.replace(/[^0-9]/g, "");
-
-    let message = "";
-
-    if (type === "reminder") {
-      message = `Bonjour ${
-        client.full_name
-      }, ici ${shopName}. 👋\n\nPetit rappel concernant votre commande "${
-        order.title
-      }".\nMontant total : ${order.price.toLocaleString()} ${currency}.\n\nMerci de votre confiance ! 🧵`;
-    } else if (type === "ready") {
-      message = `Bonne nouvelle ${client.full_name} ! 🎉\n\nVotre tenue "${order.title}" est terminée et prête à être récupérée à ${shopName}.\n\nÀ très vite !`;
-    }
-
-    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
-      message
-    )}`;
-    window.open(url, "_blank");
   };
 
+  // Suppression Client
+  const handleDeleteClient = async () => {
+    if (!client) return;
+    if (
+      !confirm(
+        "🛑 ATTENTION : Supprimer ce client effacera aussi son historique. Continuer ?",
+      )
+    )
+      return;
+    setLoading(true);
+    await supabase.from("orders").delete().eq("client_id", client.id);
+    await supabase.from("clients").delete().eq("id", client.id);
+    router.push("/clients");
+  };
+
+  // Génération Facture
   const handleDownloadInvoice = (e: React.MouseEvent, order: Order) => {
     e.stopPropagation();
     if (!client) return;
@@ -223,267 +247,257 @@ export default function ClientDetails() {
     });
   };
 
-  const handleDeleteClient = async () => {
-    if (!client) return;
-    if (
-      !confirm("🛑 ATTENTION : Supprimer ce client et toutes ses commandes ?")
-    )
-      return;
-    setLoading(true);
+  // WhatsApp
+  const sendWhatsApp = (type: "reminder" | "ready", order: Order) => {
+    if (!client?.phone) return alert("Pas de numéro de téléphone.");
+    const shop = shopProfile?.shop_name || "L'Atelier";
+    const cleanPhone = client.phone.replace(/[^0-9]/g, "");
+    let msg = "";
 
-    await supabase.from("orders").delete().eq("client_id", client.id);
-    const { error } = await supabase
-      .from("clients")
-      .delete()
-      .eq("id", client.id);
-
-    if (error) {
-      alert("Erreur : " + error.message);
-      setLoading(false);
+    if (type === "reminder") {
+      msg = `Bonjour ${client.full_name} 👋, c'est ${shop}. Rappel pour votre commande "${order.title}". Reste à payer : ${order.price} ${shopProfile?.currency}. Merci !`;
     } else {
-      router.push("/");
+      msg = `Bonne nouvelle ${client.full_name} ! 🎉 Votre commande "${order.title}" est prête à l'atelier. À très vite !`;
     }
+    window.open(
+      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`,
+      "_blank",
+    );
   };
 
-  const handleSaveMeasurements = async () => {
-    if (!client) return;
-    const { error } = await supabase
-      .from("clients")
-      .update({ measurements: tempMeasurements })
-      .eq("id", client.id);
-    if (!error) {
-      setClient({ ...client, measurements: tempMeasurements });
-      setIsEditingMeasurements(false);
-    }
-  };
+  // --- RENDER ---
 
-  const handleMeasurementChange = (key: string, value: string) => {
-    setTempMeasurements((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const handleUpdateOrder = async () => {
-    if (!editingOrder) return;
-    const { error } = await supabase
-      .from("orders")
-      .update({
-        title: editingOrder.title,
-        status: editingOrder.status,
-        price: editingOrder.price,
-      })
-      .eq("id", editingOrder.id);
-
-    if (!error) {
-      setOrders((prev) =>
-        prev.map((o) => (o.id === editingOrder.id ? editingOrder : o))
-      );
-      setEditingOrder(null);
-    }
-  };
-
-  const handleDeleteOrder = async () => {
-    if (!editingOrder) return;
-    if (!window.confirm("Supprimer cette commande ?")) return;
-    const { error } = await supabase
-      .from("orders")
-      .delete()
-      .eq("id", editingOrder.id);
-    if (!error) {
-      setOrders((prev) => prev.filter((o) => o.id !== editingOrder.id));
-      setEditingOrder(null);
-    }
-  };
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  };
-
-  // --- CORRECTION ICI : Utilisation de Loader2 ---
   if (loading)
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950">
         <Loader2 className="animate-spin text-gray-400" size={40} />
       </div>
     );
 
-  if (!client) return <p className="text-center p-8">Client introuvable.</p>;
+  if (!client)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950 text-gray-500">
+        Client introuvable.
+      </div>
+    );
 
   return (
-    <main className="min-h-screen bg-gray-50 pb-20">
-      <div className="bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 z-10">
+    <main className="min-h-screen bg-gray-50 dark:bg-neutral-950 pb-24 transition-colors duration-300">
+      {/* HEADER NAV */}
+      <div className="bg-white dark:bg-neutral-900 px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 z-20">
         <Link
-          href="/"
-          className="text-gray-500 hover:text-black flex items-center gap-2 text-sm font-medium"
+          href="/clients"
+          className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white flex items-center gap-2 text-sm font-bold transition-colors"
         >
-          ← Retour
+          <ArrowLeft size={18} /> Retour
         </Link>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setIsEditingClient(true)}
+            className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-colors"
+            aria-label="Modifier le client"
+          >
+            <Edit2 size={16} />
+          </button>
+          <button
+            onClick={handleDeleteClient}
+            className="p-2 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-colors"
+            aria-label="Supprimer le client"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
 
-      <div className="max-w-xl mx-auto p-6 flex flex-col gap-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col items-center text-center relative group">
-          <div className="absolute top-4 right-4 flex gap-2">
-            <button
-              onClick={() => setIsEditingClient(true)}
-              className="p-2 bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 rounded-full transition-all"
-              title="Modifier les infos client"
-              aria-label="Modifier les infos client"
-            >
-              <Edit2 size={18} />
-            </button>
-            <button
-              onClick={handleDeleteClient}
-              className="p-2 bg-gray-50 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-full transition-all"
-              title="Supprimer ce client"
-              aria-label="Supprimer ce client"
-            >
-              <Trash2 size={18} />
-            </button>
+      <div className="max-w-3xl mx-auto p-6 space-y-6">
+        {/* CARTE IDENTITÉ */}
+        <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 flex flex-col items-center text-center">
+          <div className="w-24 h-24 bg-black dark:bg-white text-white dark:text-black rounded-full flex items-center justify-center text-3xl font-bold mb-4 shadow-lg">
+            {client.full_name.charAt(0).toUpperCase()}
           </div>
-
-          <div className="w-24 h-24 bg-black text-white rounded-full flex items-center justify-center text-3xl font-bold shadow-md mb-4 border-4 border-gray-50">
-            {getInitials(client.full_name)}
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 capitalize">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
             {client.full_name}
           </h1>
-          <p className="text-gray-500 text-sm font-medium mt-1">
-            📍 {client.city}
-          </p>
-
-          <div className="flex gap-3 mt-6 w-full">
-            {client.phone && (
-              <>
-                <a
-                  href={`tel:${client.phone}`}
-                  className="flex-1 flex items-center justify-center gap-2 bg-gray-100 text-gray-900 py-2.5 rounded-xl font-medium hover:bg-gray-200 transition"
-                >
-                  📞 Appeler
-                </a>
-                <a
-                  href={`https://wa.me/${client.phone.replace(/[^0-9]/g, "")}`}
-                  target="_blank"
-                  className="flex-1 flex items-center justify-center gap-2 bg-[#25D366] text-white py-2.5 rounded-xl font-medium hover:opacity-90 transition shadow-sm"
-                >
-                  <MessageCircle size={18} /> WhatsApp
-                </a>
-              </>
+          <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-6">
+            <span className="flex items-center gap-1">
+              <Phone size={14} /> {client.phone}
+            </span>
+            {client.city && (
+              <span className="flex items-center gap-1">
+                <MapPin size={14} /> {client.city}
+              </span>
             )}
           </div>
 
+          <div className="flex gap-3 w-full max-w-sm">
+            <a
+              href={`tel:${client.phone}`}
+              className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white py-3 rounded-xl font-bold text-sm hover:opacity-80 transition flex justify-center items-center gap-2"
+            >
+              <Phone size={16} /> Appeler
+            </a>
+            <a
+              href={`https://wa.me/${client.phone.replace(/[^0-9]/g, "")}`}
+              target="_blank"
+              className="flex-1 bg-[#25D366] text-white py-3 rounded-xl font-bold text-sm hover:opacity-90 transition flex justify-center items-center gap-2"
+            >
+              <MessageCircle size={16} /> WhatsApp
+            </a>
+          </div>
+
           {client.notes && (
-            <div className="mt-6 w-full bg-yellow-50 border border-yellow-100 p-4 rounded-xl text-left">
-              <p className="text-xs text-yellow-600 font-bold uppercase mb-1">
-                Note personnelle
-              </p>
-              <p className="text-sm text-gray-800 italic">
-                &quot;{client.notes}&quot;
+            <div className="mt-6 w-full bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-900/30 p-4 rounded-xl text-left flex gap-3">
+              <StickyNote className="text-yellow-600 shrink-0" size={20} />
+              <p className="text-sm text-gray-800 dark:text-gray-300 italic">
+                {client.notes}
               </p>
             </div>
           )}
         </div>
 
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              Commandes{" "}
-              <span className="bg-gray-200 text-gray-600 text-xs px-2 py-0.5 rounded-full">
-                {orders.length}
-              </span>
+        {/* SECTION MESURES */}
+        <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+          <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
+              <Ruler size={16} /> Mesures ({currentTemplate.label})
             </h2>
-            <Link
-              href={`/clients/${client.id}/new-order`}
-              className="bg-black text-white text-sm px-4 py-2 rounded-lg shadow-md hover:bg-gray-800 transition"
-            >
-              + Créer
-            </Link>
+            {!isEditingMeasurements ? (
+              <button
+                onClick={() => setIsEditingMeasurements(true)}
+                className="text-xs font-bold text-black dark:text-white hover:underline"
+              >
+                Modifier
+              </button>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsEditingMeasurements(false)}
+                  className="text-xs font-bold text-gray-500 hover:text-black"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleSaveMeasurements}
+                  className="text-xs font-bold text-green-600 hover:text-green-700"
+                >
+                  Sauvegarder
+                </button>
+              </div>
+            )}
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="p-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {Object.entries(tempMeasurements).map(([key, value]) => {
+                const label = getLabelForField(key);
+                if (!label) return null;
+
+                return (
+                  <div
+                    key={key}
+                    className="bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700"
+                  >
+                    <span className="block text-[10px] uppercase font-bold text-gray-400 mb-1 truncate">
+                      {label}
+                    </span>
+                    {isEditingMeasurements ? (
+                      <input
+                        type="number"
+                        className="w-full bg-transparent border-b border-gray-300 dark:border-gray-600 focus:border-black dark:focus:border-white outline-none font-bold text-gray-900 dark:text-white"
+                        value={value}
+                        onChange={(e) =>
+                          setTempMeasurements((prev) => ({
+                            ...prev,
+                            [key]: e.target.value,
+                          }))
+                        }
+                        aria-label={`Modifier ${label}`}
+                      />
+                    ) : (
+                      <span className="text-lg font-bold text-gray-900 dark:text-white">
+                        {value}{" "}
+                        <span className="text-xs font-normal text-gray-400">
+                          cm
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {Object.keys(tempMeasurements).filter((k) => !k.startsWith("_"))
+              .length === 0 && (
+              <p className="text-center text-gray-400 text-sm italic">
+                Aucune mesure enregistrée.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION COMMANDES */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
+              <ShoppingBag size={16} /> Historique Commandes
+            </h2>
+          </div>
+
+          <div className="space-y-3">
             {orders.length === 0 ? (
-              <div className="bg-white border border-dashed border-gray-300 rounded-xl p-8 text-center text-gray-400 text-sm">
-                Aucune commande.
+              <div className="text-center py-10 border border-dashed border-gray-300 dark:border-gray-700 rounded-2xl text-gray-400 text-sm">
+                Aucune commande pour ce client.
               </div>
             ) : (
               orders.map((order) => (
                 <div
                   key={order.id}
-                  onClick={() => setEditingOrder(order)}
-                  className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:border-black transition group"
+                  className="bg-white dark:bg-neutral-900 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-3"
                 >
-                  <div className="flex justify-between items-start mb-3">
+                  <div className="flex justify-between items-start">
                     <div>
-                      <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition">
+                      <h3 className="font-bold text-gray-900 dark:text-white">
                         {order.title}
                       </h3>
-                      <p className="text-sm text-gray-500 mt-0.5">
-                        📅{" "}
-                        {new Date(order.deadline).toLocaleDateString("fr-FR")}
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Livraison :{" "}
+                        {new Date(order.deadline).toLocaleDateString()}
                       </p>
                     </div>
-                    <p className="font-bold text-gray-900">
+                    <span className="font-bold text-gray-900 dark:text-white">
                       {order.price.toLocaleString()} {shopProfile?.currency}
-                    </p>
+                    </span>
                   </div>
 
-                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-50">
-                    <div className="flex gap-2">
-                      {order.status === "en_attente" && (
-                        <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full font-medium">
-                          En attente
-                        </span>
-                      )}
-                      {order.status === "en_cours" && (
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
-                          En cours
-                        </span>
-                      )}
-                      {order.status === "termine" && (
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
-                          Terminé
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex items-center justify-between pt-3 border-t border-gray-50 dark:border-gray-800">
+                    <span
+                      className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${
+                        order.status === "termine"
+                          ? "bg-green-100 text-green-700"
+                          : order.status === "en_cours"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-yellow-100 text-yellow-700"
+                      }`}
+                    >
+                      {order.status.replace("_", " ")}
+                    </span>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex gap-2">
                       <button
                         onClick={(e) => handleDownloadInvoice(e, order)}
-                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                        title="Télécharger la facture"
+                        className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition"
+                        title="Facture"
                         aria-label="Télécharger la facture"
                       >
-                        <FileText size={18} />
+                        <FileText size={16} />
                       </button>
-
-                      {client.phone &&
-                        (order.status === "termine" ? (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              sendWhatsAppMessage("ready", order);
-                            }}
-                            className="p-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition"
-                            title="Prévenir que c'est prêt"
-                            aria-label="Prévenir que c'est prêt"
-                          >
-                            <CheckCircle2 size={18} />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              sendWhatsAppMessage("reminder", order);
-                            }}
-                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition"
-                            title="Relancer pour paiement"
-                            aria-label="Relancer pour paiement"
-                          >
-                            <BellRing size={18} />
-                          </button>
-                        ))}
+                      <button
+                        onClick={() => sendWhatsApp("ready", order)}
+                        className="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition"
+                        title="Prévenir client"
+                        aria-label="Envoyer message WhatsApp"
+                      >
+                        <CheckCircle2 size={16} />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -491,110 +505,31 @@ export default function ClientDetails() {
             )}
           </div>
         </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-            <h2 className="text-lg font-bold text-gray-900">📏 Mesures</h2>
-            {!isEditingMeasurements && (
-              <button
-                onClick={() => setIsEditingMeasurements(true)}
-                className="text-sm bg-white border border-gray-300 px-3 py-1.5 rounded-lg font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition"
-              >
-                Modifier
-              </button>
-            )}
-          </div>
-          <div className="p-6">
-            {isEditingMeasurements ? (
-              <div className="grid grid-cols-2 gap-4">
-                {STANDARD_MEASUREMENTS.map((m) => (
-                  <div key={m.key}>
-                    <label
-                      htmlFor={m.key}
-                      className="block text-xs font-bold text-gray-500 uppercase mb-1"
-                    >
-                      {m.label}
-                    </label>
-                    <div className="relative">
-                      <input
-                        id={m.key}
-                        type="number"
-                        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-black outline-none font-medium"
-                        value={tempMeasurements[m.key] || ""}
-                        onChange={(e) =>
-                          handleMeasurementChange(m.key, e.target.value)
-                        }
-                        placeholder="0"
-                      />
-                      <span className="absolute right-3 top-2.5 text-gray-400 text-sm">
-                        cm
-                      </span>
-                    </div>
-                  </div>
-                ))}
-                <div className="col-span-2 flex gap-3 pt-4 mt-2 border-t border-gray-100">
-                  <button
-                    onClick={() => setIsEditingMeasurements(false)}
-                    className="flex-1 py-3 text-gray-600 font-medium bg-gray-100 rounded-xl hover:bg-gray-200 transition"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    onClick={handleSaveMeasurements}
-                    className="flex-1 py-3 bg-black text-white font-bold rounded-xl shadow-md hover:bg-gray-800 transition"
-                  >
-                    Sauvegarder
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {STANDARD_MEASUREMENTS.map((m) => (
-                  <div
-                    key={m.key}
-                    className="p-3 bg-gray-50 rounded-xl text-center border border-gray-100"
-                  >
-                    <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide mb-1">
-                      {m.label}
-                    </div>
-                    <div className="text-lg font-bold text-gray-900">
-                      {client.measurements?.[m.key]
-                        ? `${client.measurements[m.key]} cm`
-                        : "-"}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
+      {/* MODAL EDIT CLIENT */}
       {isEditingClient && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in">
-            <h3 className="text-lg font-bold mb-4 border-b pb-2 flex items-center justify-between">
-              Modifier le client
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white dark:bg-neutral-900 w-full max-w-sm rounded-2xl p-6 shadow-2xl border border-gray-100 dark:border-gray-800">
+            <div className="flex justify-between items-center mb-4 border-b border-gray-100 dark:border-gray-800 pb-2">
+              <h3 className="font-bold text-lg dark:text-white">
+                Modifier Client
+              </h3>
               <button
                 onClick={() => setIsEditingClient(false)}
-                className="text-gray-400 hover:text-black"
                 aria-label="Fermer"
               >
-                <X size={20} />
+                <X className="dark:text-white" size={20} />
               </button>
-            </h3>
+            </div>
             <div className="space-y-4">
               <div>
-                <label
-                  htmlFor="client-name"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
+                <label className="block text-xs font-bold text-gray-500 mb-1">
                   Nom complet
                 </label>
                 <input
-                  id="client-name"
-                  type="text"
-                  className="w-full border rounded-lg p-3"
+                  className="w-full p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white"
+                  placeholder="Nom complet"
                   value={tempClientData.full_name}
                   onChange={(e) =>
                     setTempClientData({
@@ -605,16 +540,12 @@ export default function ClientDetails() {
                 />
               </div>
               <div>
-                <label
-                  htmlFor="client-phone"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
+                <label className="block text-xs font-bold text-gray-500 mb-1">
                   Téléphone
                 </label>
                 <input
-                  id="client-phone"
-                  type="text"
-                  className="w-full border rounded-lg p-3"
+                  className="w-full p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white"
+                  placeholder="Téléphone"
                   value={tempClientData.phone}
                   onChange={(e) =>
                     setTempClientData({
@@ -625,16 +556,12 @@ export default function ClientDetails() {
                 />
               </div>
               <div>
-                <label
-                  htmlFor="client-city"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
+                <label className="block text-xs font-bold text-gray-500 mb-1">
                   Ville
                 </label>
                 <input
-                  id="client-city"
-                  type="text"
-                  className="w-full border rounded-lg p-3"
+                  className="w-full p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white"
+                  placeholder="Ville"
                   value={tempClientData.city}
                   onChange={(e) =>
                     setTempClientData({
@@ -645,15 +572,12 @@ export default function ClientDetails() {
                 />
               </div>
               <div>
-                <label
-                  htmlFor="client-notes"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
+                <label className="block text-xs font-bold text-gray-500 mb-1">
                   Notes
                 </label>
                 <textarea
-                  id="client-notes"
-                  className="w-full border rounded-lg p-3"
+                  className="w-full p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white resize-none dark:text-white"
+                  placeholder="Notes..."
                   rows={3}
                   value={tempClientData.notes}
                   onChange={(e) =>
@@ -664,108 +588,12 @@ export default function ClientDetails() {
                   }
                 />
               </div>
-              <div className="pt-2">
-                <button
-                  onClick={handleUpdateClient}
-                  className="w-full bg-black text-white font-bold py-3 rounded-xl hover:bg-gray-800 flex items-center justify-center gap-2"
-                >
-                  <Save size={18} /> Enregistrer les modifications
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {editingOrder && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in">
-            <h3 className="text-lg font-bold mb-4 border-b pb-2">
-              Modifier la commande
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label
-                  htmlFor="edit-title"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Titre
-                </label>
-                <input
-                  id="edit-title"
-                  type="text"
-                  className="w-full border rounded-lg p-2"
-                  value={editingOrder.title}
-                  onChange={(e) =>
-                    setEditingOrder({ ...editingOrder, title: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="edit-price"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Prix
-                </label>
-                <input
-                  id="edit-price"
-                  type="number"
-                  className="w-full border rounded-lg p-2"
-                  value={editingOrder.price}
-                  onChange={(e) =>
-                    setEditingOrder({
-                      ...editingOrder,
-                      price: parseInt(e.target.value) || 0,
-                    })
-                  }
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="edit-status"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Statut
-                </label>
-                <select
-                  id="edit-status"
-                  className="w-full border rounded-lg p-2 bg-white"
-                  value={editingOrder.status}
-                  onChange={(e) =>
-                    setEditingOrder({
-                      ...editingOrder,
-                      status: e.target.value,
-                    })
-                  }
-                >
-                  <option value="en_attente">🟡 En attente</option>
-                  <option value="en_cours">🔵 En cours</option>
-                  <option value="termine">🟢 Terminé</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-3 pt-4">
-                <button
-                  onClick={handleUpdateOrder}
-                  className="w-full bg-black text-white font-bold py-3 rounded-xl hover:bg-gray-800"
-                >
-                  Enregistrer
-                </button>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setEditingOrder(null)}
-                    className="flex-1 bg-gray-100 text-gray-700 font-medium py-3 rounded-xl"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    onClick={handleDeleteOrder}
-                    className="flex-1 bg-red-50 text-red-600 font-medium py-3 rounded-xl hover:bg-red-100 border border-red-100"
-                  >
-                    Supprimer
-                  </button>
-                </div>
-              </div>
+              <button
+                onClick={handleUpdateClient}
+                className="w-full bg-black dark:bg-white text-white dark:text-black font-bold py-3 rounded-xl hover:scale-[1.02] transition-transform"
+              >
+                Enregistrer
+              </button>
             </div>
           </div>
         </div>
