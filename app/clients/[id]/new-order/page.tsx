@@ -11,6 +11,7 @@ import {
   Tag,
   FileText,
   Banknote,
+  Coins, // Icône pour l'avance
 } from "lucide-react";
 
 export default function NewOrder({
@@ -18,7 +19,6 @@ export default function NewOrder({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  // On décode les paramètres de manière asynchrone (Standard Next.js 15)
   const { id } = use(params);
   const router = useRouter();
 
@@ -29,6 +29,7 @@ export default function NewOrder({
   const [formData, setFormData] = useState({
     title: "",
     price: "",
+    advance: "", // NOUVEAU : Champ pour l'acompte
     deadline: "",
     description: "",
     status: "en_attente",
@@ -37,17 +38,14 @@ export default function NewOrder({
   // 1. CONFIGURATION
   useEffect(() => {
     const initPage = async () => {
-      // A. Vérifier Session (getUser est plus sécurisé que getSession)
       const {
         data: { user },
       } = await supabase.auth.getUser();
-
       if (!user) {
         router.push("/login");
         return;
       }
 
-      // B. Récupérer la devise de l'atelier
       const { data: profile } = await supabase
         .from("profiles")
         .select("currency")
@@ -83,20 +81,22 @@ export default function NewOrder({
     const {
       data: { user },
     } = await supabase.auth.getUser();
-
     if (!user) {
       router.push("/login");
       return;
     }
 
+    // Conversion des montants
     const priceInt = formData.price ? parseInt(formData.price) : 0;
+    const advanceInt = formData.advance ? parseInt(formData.advance) : 0; // Gestion de l'avance
 
     const { error } = await supabase.from("orders").insert([
       {
         client_id: id,
         title: formData.title,
         price: priceInt,
-        deadline: formData.deadline || null, // null si vide
+        advance: advanceInt, // On enregistre l'avance
+        deadline: formData.deadline || null,
         description: formData.description,
         status: formData.status,
         user_id: user.id,
@@ -161,14 +161,15 @@ export default function NewOrder({
                 </div>
               </div>
 
+              {/* GRILLE PRIX & AVANCE */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Prix */}
+                {/* Prix Total */}
                 <div>
                   <label
                     htmlFor="price"
                     className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"
                   >
-                    Prix ({currency})
+                    Prix Total ({currency})
                   </label>
                   <div className="relative">
                     <Banknote className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
@@ -176,6 +177,7 @@ export default function NewOrder({
                       id="price"
                       type="number"
                       name="price"
+                      required
                       className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all dark:text-white font-medium"
                       placeholder="0"
                       value={formData.price}
@@ -184,25 +186,47 @@ export default function NewOrder({
                   </div>
                 </div>
 
-                {/* Date limite */}
+                {/* Avance (Nouveau) */}
                 <div>
                   <label
-                    htmlFor="deadline"
-                    className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"
+                    htmlFor="advance"
+                    className="block text-xs font-bold text-green-600 dark:text-green-400 uppercase mb-2"
                   >
-                    Date de Livraison
+                    Avance Perçue
                   </label>
                   <div className="relative">
-                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5 pointer-events-none" />
+                    <Coins className="absolute left-4 top-1/2 -translate-y-1/2 text-green-500 h-5 w-5" />
                     <input
-                      id="deadline"
-                      type="date"
-                      name="deadline"
-                      className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all dark:text-white font-medium appearance-none" // appearance-none pour cleaner le style natif sur mobile
-                      value={formData.deadline}
+                      id="advance"
+                      type="number"
+                      name="advance"
+                      className="w-full pl-12 pr-4 py-3 bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-green-700 dark:text-green-300 font-bold placeholder-green-300"
+                      placeholder="0"
+                      value={formData.advance}
                       onChange={handleChange}
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Date limite */}
+              <div>
+                <label
+                  htmlFor="deadline"
+                  className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"
+                >
+                  Date de Livraison
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5 pointer-events-none" />
+                  <input
+                    id="deadline"
+                    type="date"
+                    name="deadline"
+                    className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all dark:text-white font-medium appearance-none"
+                    value={formData.deadline}
+                    onChange={handleChange}
+                  />
                 </div>
               </div>
 
@@ -251,7 +275,6 @@ export default function NewOrder({
                     <option value="essayage">🟣 Essayage</option>
                     <option value="termine">🟢 Terminé (Prêt à livrer)</option>
                   </select>
-                  {/* Petite flèche custom pour le select */}
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
                     ▼
                   </div>

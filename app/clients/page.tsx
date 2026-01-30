@@ -11,7 +11,7 @@ import {
   MapPin,
   Loader2,
   Users,
-  ArrowLeft, // <--- IMPORT AJOUTÉ
+  ArrowLeft,
 } from "lucide-react";
 
 // Type pour nos clients
@@ -63,10 +63,10 @@ export default function ClientsPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-neutral-950 p-6 transition-colors duration-300">
       <div className="max-w-5xl mx-auto">
-        {/* --- HEADER NAV (AJOUT BOUTON RETOUR) --- */}
+        {/* --- HEADER NAV (CORRECTION DU LIEN) --- */}
         <div className="mb-6">
           <Link
-            href="/"
+            href="/dashboard" // <--- CORRECTION ICI : Redirection vers le Dashboard
             className="inline-flex items-center gap-2 text-gray-500 hover:text-black dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium"
           >
             <ArrowLeft size={18} /> Retour au tableau de bord

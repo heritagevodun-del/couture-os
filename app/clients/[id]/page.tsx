@@ -34,12 +34,14 @@ type Client = {
   measurements: any;
 };
 
+// MISE À JOUR : Ajout du champ 'advance'
 type Order = {
   id: string;
   title: string;
   status: string;
   deadline: string;
   price: number;
+  advance: number; // <--- ICI
   description: string;
   created_at: string;
 };
@@ -205,7 +207,7 @@ export default function ClientDetails({
     router.push("/clients");
   };
 
-  // Génération Facture
+  // Génération Facture (MISE À JOUR)
   const handleDownloadInvoice = (e: React.MouseEvent, order: Order) => {
     e.stopPropagation();
     if (!client) return;
@@ -237,27 +239,31 @@ export default function ClientDetails({
       order: {
         id: order.id,
         title: order.title,
-        date: new Date().toISOString().split("T")[0],
+        date: order.created_at, // Date réelle
         deadline: order.deadline,
         description: order.description,
         price: order.price,
+        advance: order.advance || 0, // ON PASSE L'AVANCE ICI
         status: order.status,
         client_order_number: sequentialNumber,
       },
     });
   };
 
-  // WhatsApp
+  // WhatsApp (MISE À JOUR : Calcul du reste à payer)
   const sendWhatsApp = (type: "reminder" | "ready", order: Order) => {
     if (!client?.phone) return alert("Pas de numéro de téléphone.");
     const shop = shopProfile?.shop_name || "L'Atelier";
     const cleanPhone = client.phone.replace(/[^0-9]/g, "");
+
+    const reste = order.price - (order.advance || 0);
+    const devise = shopProfile?.currency || "FCFA";
     let msg = "";
 
     if (type === "reminder") {
-      msg = `Bonjour ${client.full_name} 👋, c'est ${shop}. Rappel pour votre commande "${order.title}". Reste à payer : ${order.price} ${shopProfile?.currency}. Merci !`;
+      msg = `Bonjour ${client.full_name} 👋, c'est ${shop}. Petit rappel pour votre commande "${order.title}". Reste à payer : ${reste.toLocaleString()} ${devise}. Merci !`;
     } else {
-      msg = `Bonne nouvelle ${client.full_name} ! 🎉 Votre commande "${order.title}" est prête à l'atelier. À très vite !`;
+      msg = `Bonne nouvelle ${client.full_name} ! 🎉 Votre commande "${order.title}" est prête. Reste à payer : ${reste.toLocaleString()} ${devise}. À très vite !`;
     }
     window.open(
       `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`,
@@ -434,16 +440,15 @@ export default function ClientDetails({
           </div>
         </div>
 
-        {/* SECTION COMMANDES (CORRIGÉE : AJOUT DU BOUTON CREATE) */}
+        {/* SECTION COMMANDES (Avec BOUTON CREER et GESTION AVANCE) */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
               <ShoppingBag size={16} /> Historique Commandes
             </h2>
-            {/* BOUTON RAJOUTÉ ICI */}
             <Link
               href={`/clients/${id}/new-order`}
-              className="flex items-center gap-1 bg-black dark:bg-white text-white dark:text-black px-3 py-1.5 rounded-lg text-xs font-bold hover:scale-105 transition-transform"
+              className="flex items-center gap-1 bg-black dark:bg-white text-white dark:text-black px-3 py-1.5 rounded-lg text-xs font-bold hover:scale-105 transition-transform shadow-sm"
             >
               <Plus size={14} /> Créer
             </Link>
@@ -455,66 +460,85 @@ export default function ClientDetails({
                 Aucune commande pour ce client.
               </div>
             ) : (
-              orders.map((order) => (
-                <div
-                  key={order.id}
-                  className="bg-white dark:bg-neutral-900 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-3"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-bold text-gray-900 dark:text-white">
-                        {order.title}
-                      </h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Livraison :{" "}
-                        {new Date(order.deadline).toLocaleDateString()}
-                      </p>
+              orders.map((order) => {
+                const reste = order.price - (order.advance || 0);
+                return (
+                  <div
+                    key={order.id}
+                    className="bg-white dark:bg-neutral-900 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-3"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-bold text-gray-900 dark:text-white">
+                          {order.title}
+                        </h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Livraison :{" "}
+                          {new Date(order.deadline).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-bold text-gray-900 dark:text-white block">
+                          {order.price.toLocaleString()} {shopProfile?.currency}
+                        </span>
+                        {/* Affiche l'avance ou le reste à payer */}
+                        {order.advance > 0 ? (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${reste > 0 ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}
+                          >
+                            {reste > 0
+                              ? `Reste: ${reste.toLocaleString()}`
+                              : "Payé ✔"}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-400">
+                            0 avance
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <span className="font-bold text-gray-900 dark:text-white">
-                      {order.price.toLocaleString()} {shopProfile?.currency}
-                    </span>
-                  </div>
 
-                  <div className="flex items-center justify-between pt-3 border-t border-gray-50 dark:border-gray-800">
-                    <span
-                      className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${
-                        order.status === "termine"
-                          ? "bg-green-100 text-green-700"
-                          : order.status === "en_cours"
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-yellow-100 text-yellow-700"
-                      }`}
-                    >
-                      {order.status.replace("_", " ")}
-                    </span>
+                    <div className="flex items-center justify-between pt-3 border-t border-gray-50 dark:border-gray-800">
+                      <span
+                        className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${
+                          order.status === "termine"
+                            ? "bg-green-100 text-green-700"
+                            : order.status === "en_cours"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-yellow-100 text-yellow-700"
+                        }`}
+                      >
+                        {order.status.replace("_", " ")}
+                      </span>
 
-                    <div className="flex gap-2">
-                      <button
-                        onClick={(e) => handleDownloadInvoice(e, order)}
-                        className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition"
-                        title="Facture"
-                        aria-label="Télécharger la facture"
-                      >
-                        <FileText size={16} />
-                      </button>
-                      <button
-                        onClick={() => sendWhatsApp("ready", order)}
-                        className="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition"
-                        title="Prévenir client"
-                        aria-label="Envoyer message WhatsApp"
-                      >
-                        <CheckCircle2 size={16} />
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => handleDownloadInvoice(e, order)}
+                          className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition"
+                          title="Facture"
+                          aria-label="Télécharger la facture"
+                        >
+                          <FileText size={16} />
+                        </button>
+                        <button
+                          onClick={() => sendWhatsApp("ready", order)}
+                          className="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition"
+                          title="Prévenir client"
+                          aria-label="Envoyer message WhatsApp"
+                        >
+                          <CheckCircle2 size={16} />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
       </div>
 
-      {/* MODAL EDIT CLIENT */}
+      {/* MODAL EDIT CLIENT (Inchangé) */}
       {isEditingClient && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white dark:bg-neutral-900 w-full max-w-sm rounded-2xl p-6 shadow-2xl border border-gray-100 dark:border-gray-800">
