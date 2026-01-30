@@ -18,6 +18,7 @@ import {
   MapPin,
   StickyNote,
   Loader2,
+  Plus,
 } from "lucide-react";
 import { generateInvoice } from "../../utils/invoiceGenerator";
 import { MEASUREMENT_TEMPLATES } from "../../constants/measurements";
@@ -83,7 +84,6 @@ export default function ClientDetails({
     const fetchData = async () => {
       if (!id) return;
 
-      // CORRECTION ICI : on utilise getUser() au lieu de getSession()
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -434,12 +434,19 @@ export default function ClientDetails({
           </div>
         </div>
 
-        {/* SECTION COMMANDES */}
+        {/* SECTION COMMANDES (CORRIGÉE : AJOUT DU BOUTON CREATE) */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
               <ShoppingBag size={16} /> Historique Commandes
             </h2>
+            {/* BOUTON RAJOUTÉ ICI */}
+            <Link
+              href={`/clients/${id}/new-order`}
+              className="flex items-center gap-1 bg-black dark:bg-white text-white dark:text-black px-3 py-1.5 rounded-lg text-xs font-bold hover:scale-105 transition-transform"
+            >
+              <Plus size={14} /> Créer
+            </Link>
           </div>
 
           <div className="space-y-3">
