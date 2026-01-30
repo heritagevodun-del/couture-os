@@ -1,275 +1,248 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "./lib/supabase";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
-  Settings,
-  Search,
-  UserPlus,
-  Image as ImageIcon,
-  Wallet,
+  ArrowRight,
+  CheckCircle2,
   Scissors,
-  Users,
-  ChevronRight,
-  Loader2,
+  ShieldCheck,
+  Zap,
+  Globe,
+  Smartphone,
 } from "lucide-react";
 
-// Types
-type Client = {
-  id: string;
-  full_name: string;
-  phone: string;
-  city: string;
-};
-
-type DashboardStats = {
-  totalRevenue: number;
-  activeOrders: number;
-  totalClients: number;
-  currency: string;
-};
-
-export default function Dashboard() {
-  // On ne garde que 'clients' dans le state, pas 'filteredClients' (c'est redondant)
-  const [clients, setClients] = useState<Client[]>([]);
-  const [stats, setStats] = useState<DashboardStats>({
-    totalRevenue: 0,
-    activeOrders: 0,
-    totalClients: 0,
-    currency: "FCFA",
-  });
-  const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [shopName, setShopName] = useState("");
-  const router = useRouter();
-
-  // --- 1. CHARGEMENT ET CALCULS ---
-  useEffect(() => {
-    const fetchData = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-
-      // A. Récupérer le Profil (Nom atelier + Devise)
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("shop_name, currency")
-        .eq("id", user.id)
-        .single();
-
-      const currencySymbol = profile?.currency || "FCFA";
-      setShopName(profile?.shop_name || "L'Atelier");
-
-      // B. Récupérer les Clients
-      const { data: clientsData } = await supabase
-        .from("clients")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-
-      // C. Récupérer les Commandes (pour les stats)
-      const { data: ordersData } = await supabase
-        .from("orders")
-        .select("price, status")
-        .eq("user_id", user.id);
-
-      // D. Calculs des Stats
-      const revenue =
-        ordersData?.reduce((sum, order) => sum + (order.price || 0), 0) || 0;
-      const active =
-        ordersData?.filter((o) => o.status !== "termine").length || 0;
-
-      setStats({
-        totalRevenue: revenue,
-        activeOrders: active,
-        totalClients: clientsData?.length || 0,
-        currency: currencySymbol,
-      });
-
-      setClients(clientsData || []);
-      setLoading(false);
-    };
-
-    fetchData();
-  }, [router]);
-
-  // --- 2. FILTRAGE (Calculé à la volée = Plus rapide, Pas d'erreur) ---
-  const filteredClients = clients.filter(
-    (client) =>
-      client.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (client.phone && client.phone.includes(searchTerm)) ||
-      (client.city &&
-        client.city.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
-  const getInitials = (name: string) =>
-    name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-
-  if (loading)
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="animate-spin text-black" size={40} />
-          <p className="text-gray-400 text-sm font-medium">
-            Chargement de votre atelier...
-          </p>
-        </div>
-      </div>
-    );
-
+export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-gray-50 pb-20">
-      {/* --- HEADER --- */}
-      <header className="bg-white px-6 pt-8 pb-6 border-b border-gray-100 sticky top-0 z-10">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <p className="text-gray-500 text-sm">Bonjour,</p>
-            <h1 className="text-2xl font-bold text-gray-900 truncate max-w-[200px]">
-              {shopName} 👋
-            </h1>
-          </div>
-          <div className="flex gap-2">
-            <Link
-              href="/catalogue"
-              className="p-2 bg-gray-50 rounded-full hover:bg-gray-100 transition border border-gray-200"
-              title="Catalogue"
-            >
-              <ImageIcon size={20} className="text-gray-600" />
-            </Link>
-            <Link
-              href="/settings"
-              className="p-2 bg-gray-50 rounded-full hover:bg-gray-100 transition border border-gray-200"
-              title="Paramètres"
-            >
-              <Settings size={20} className="text-gray-600" />
-            </Link>
-          </div>
-        </div>
-
-        {/* --- KPI CARDS (STATS) --- */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {/* Carte CA (Noire) */}
-          <div className="bg-black text-white p-4 rounded-2xl shadow-lg col-span-2 md:col-span-1">
-            <div className="flex items-center gap-2 mb-1 opacity-80">
-              <Wallet size={16} />
-              <span className="text-xs font-medium uppercase tracking-wide">
-                Chiffre d&apos;Affaires
+    <div className="min-h-screen bg-white dark:bg-neutral-950 text-gray-900 dark:text-white transition-colors duration-300">
+      {/* --- NAVBAR --- */}
+      <nav className="fixed w-full bg-white/80 dark:bg-neutral-950/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 z-50 transition-colors">
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+          {/* Logo */}
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-black dark:bg-white rounded-full border border-[#D4AF37] flex items-center justify-center">
+              <span className="text-[#D4AF37] dark:text-black font-bold text-xs">
+                OS
               </span>
             </div>
-            <div className="text-2xl font-bold truncate">
-              {stats.totalRevenue.toLocaleString()}{" "}
-              <span className="text-sm font-normal text-gray-400">
-                {stats.currency}
-              </span>
-            </div>
+            <span className="font-bold text-xl tracking-tight">CoutureOS</span>
           </div>
 
-          {/* Carte Commandes en cours */}
-          <div className="bg-white border border-gray-100 p-4 rounded-2xl shadow-sm flex flex-col justify-center">
-            <div className="flex items-center gap-2 mb-1 text-blue-600">
-              <Scissors size={16} />
-              <span className="text-xs font-bold uppercase">En cours</span>
-            </div>
-            <div className="text-2xl font-bold text-gray-900">
-              {stats.activeOrders}
-            </div>
+          {/* Boutons */}
+          <div className="flex items-center gap-4">
+            <Link
+              href="/login"
+              className="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white transition"
+            >
+              Connexion
+            </Link>
+            <Link
+              href="/login"
+              className="bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-full text-sm font-bold hover:bg-gray-800 dark:hover:bg-gray-200 transition"
+            >
+              Essayer
+            </Link>
+          </div>
+        </div>
+      </nav>
+
+      {/* --- HERO SECTION --- */}
+      <section className="pt-32 pb-20 px-6">
+        <div className="max-w-4xl mx-auto text-center">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-xs font-bold mb-6 border border-yellow-100 dark:border-yellow-700/50">
+            ✨ La référence pour les ateliers modernes
           </div>
 
-          {/* Carte Clients Total */}
-          <div className="bg-white border border-gray-100 p-4 rounded-2xl shadow-sm flex flex-col justify-center">
-            <div className="flex items-center gap-2 mb-1 text-gray-500">
-              <Users size={16} />
-              <span className="text-xs font-bold uppercase">Clients</span>
+          <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 leading-tight">
+            Gérez votre atelier <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] to-yellow-600">
+              comme un Pro.
+            </span>
+          </h1>
+
+          <p className="text-lg text-gray-500 dark:text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed">
+            Fini les carnets perdus. Centralisez vos clients, mesures et
+            commandes dans une application sécurisée, conçue pour les couturiers
+            exigeants.
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              href="/login"
+              className="w-full sm:w-auto px-8 py-4 bg-black dark:bg-white text-white dark:text-black rounded-full font-bold text-lg hover:scale-105 transition-transform flex items-center justify-center gap-2 shadow-xl shadow-gray-200 dark:shadow-none"
+            >
+              Commencer maintenant <ArrowRight size={20} />
+            </Link>
+            <Link
+              href="#pricing"
+              className="w-full sm:w-auto px-8 py-4 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 rounded-full font-bold text-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition border border-gray-200 dark:border-gray-800"
+            >
+              Voir les tarifs
+            </Link>
+          </div>
+
+          <div className="mt-12 text-sm text-gray-400 font-medium">
+            Déjà utilisé par des ateliers à Paris, Dakar, Cotonou et New York.
+          </div>
+        </div>
+      </section>
+
+      {/* --- FEATURES --- */}
+      <section
+        id="features"
+        className="py-24 bg-gray-50 dark:bg-neutral-900 border-t border-gray-100 dark:border-gray-800 transition-colors"
+      >
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Feature 1 */}
+            <div className="bg-white dark:bg-neutral-950 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-[#D4AF37] dark:hover:border-[#D4AF37] transition duration-300">
+              <div className="w-12 h-12 bg-black dark:bg-white text-white dark:text-black rounded-2xl flex items-center justify-center mb-6">
+                <Scissors size={24} />
+              </div>
+              <h3 className="text-xl font-bold mb-3">Mesures Digitales</h3>
+              <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
+                Enregistrez les mesures une seule fois. Retrouvez-les
+                instantanément pour chaque nouvelle commande, sur mobile ou
+                ordinateur.
+              </p>
             </div>
-            <div className="text-2xl font-bold text-gray-900">
-              {stats.totalClients}
+
+            {/* Feature 2 */}
+            <div className="bg-white dark:bg-neutral-950 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-[#D4AF37] dark:hover:border-[#D4AF37] transition duration-300">
+              <div className="w-12 h-12 bg-[#D4AF37] text-white rounded-2xl flex items-center justify-center mb-6">
+                <Zap size={24} />
+              </div>
+              <h3 className="text-xl font-bold mb-3">Factures en 1 Clic</h3>
+              <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
+                Générez des factures professionnelles PDF automatiquement.
+                Envoyez-les par WhatsApp à vos clients sans effort.
+              </p>
+            </div>
+
+            {/* Feature 3 */}
+            <div className="bg-white dark:bg-neutral-950 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-[#D4AF37] dark:hover:border-[#D4AF37] transition duration-300">
+              <div className="w-12 h-12 bg-green-600 text-white rounded-2xl flex items-center justify-center mb-6">
+                <ShieldCheck size={24} />
+              </div>
+              <h3 className="text-xl font-bold mb-3">100% Sécurisé</h3>
+              <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
+                Vos données sont cryptées. Ne perdez plus jamais le numéro
+                d&apos;un client important ou l&apos;historique de ses
+                paiements.
+              </p>
             </div>
           </div>
         </div>
-      </header>
+      </section>
 
-      <div className="max-w-xl mx-auto p-6">
-        {/* --- BARRE DE RECHERCHE --- */}
-        <div className="relative mb-6">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
-          <input
-            type="text"
-            placeholder="Rechercher un client, une ville..."
-            className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none shadow-sm transition-all"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      {/* --- PRICING --- */}
+      <section id="pricing" className="py-24 px-6">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-3xl font-bold mb-12">
+            Un prix adapté à votre région
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+            {/* Plan International */}
+            <div className="p-8 border border-gray-100 dark:border-gray-800 rounded-3xl text-left hover:border-black dark:hover:border-white transition bg-white dark:bg-neutral-900">
+              <div className="flex items-center gap-2 mb-2">
+                <Globe size={18} className="text-gray-400" />
+                <h3 className="text-lg font-bold text-gray-500 uppercase tracking-wide">
+                  International
+                </h3>
+              </div>
+              <div className="text-4xl font-bold mb-6">
+                9.90€{" "}
+                <span className="text-lg text-gray-400 font-medium">/mois</span>
+              </div>
+
+              <ul className="space-y-3 mb-8 text-gray-600 dark:text-gray-400">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={18} className="text-green-500" /> Clients
+                  illimités
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={18} className="text-green-500" />{" "}
+                  Catalogue photo HD
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={18} className="text-green-500" /> Support
+                  prioritaire
+                </li>
+              </ul>
+
+              <Link
+                href="/login"
+                className="block w-full py-3 bg-gray-100 dark:bg-gray-800 text-black dark:text-white font-bold text-center rounded-xl hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+              >
+                Choisir
+              </Link>
+            </div>
+
+            {/* Plan Afrique - MISE EN AVANT */}
+            <div className="relative p-8 bg-black dark:bg-neutral-800 text-white rounded-3xl shadow-2xl text-left transform md:scale-105 border border-gray-800">
+              <div className="absolute top-0 right-0 bg-[#D4AF37] text-black text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">
+                OFFRE POPULAIRE
+              </div>
+
+              <div className="flex items-center gap-2 mb-2">
+                <Smartphone size={18} className="text-[#D4AF37]" />
+                <h3 className="text-lg font-bold text-[#D4AF37] uppercase tracking-wide">
+                  Zone Afrique
+                </h3>
+              </div>
+
+              <div className="text-4xl font-bold mb-6">
+                1 000 F{" "}
+                <span className="text-lg text-gray-400 font-medium">/mois</span>
+              </div>
+              <p className="text-sm text-gray-400 mb-6">
+                Prix spécial lancement pour soutenir les artisans locaux.
+              </p>
+
+              <ul className="space-y-3 mb-8">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={18} className="text-[#D4AF37]" /> Tout
+                  illimité
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={18} className="text-[#D4AF37]" /> Paiement
+                  Mobile Money
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={18} className="text-[#D4AF37]" />{" "}
+                  Fonctionne sur mobile
+                </li>
+              </ul>
+
+              <Link
+                href="/login"
+                className="block w-full py-3 bg-[#D4AF37] text-black font-bold text-center rounded-xl hover:bg-yellow-500 transition"
+              >
+                Commencer à 1000F
+              </Link>
+            </div>
+          </div>
         </div>
+      </section>
 
-        {/* --- TITRE SECTION + BOUTON --- */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-gray-900">Vos Clients</h2>
+      {/* --- FOOTER --- */}
+      <footer className="py-8 text-center text-sm text-gray-400 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-neutral-900 transition-colors">
+        <p>© 2026 CoutureOS. Fait avec passion pour les artisans.</p>
+        <div className="flex justify-center gap-4 mt-4">
           <Link
-            href="/clients/new"
-            className="bg-black text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-md hover:bg-gray-800 transition"
+            href="/legal/terms"
+            className="hover:text-black dark:hover:text-white transition"
           >
-            <UserPlus size={16} /> Nouveau
+            CGU
+          </Link>
+          <Link
+            href="/legal/privacy"
+            className="hover:text-black dark:hover:text-white transition"
+          >
+            Confidentialité
           </Link>
         </div>
-
-        {/* --- LISTE CLIENTS --- */}
-        <div className="flex flex-col gap-3">
-          {filteredClients.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-200">
-              <Users size={40} className="mx-auto text-gray-300 mb-3" />
-              <p className="text-gray-500 font-medium">
-                {searchTerm
-                  ? "Aucun résultat trouvé."
-                  : "Votre carnet est vide."}
-              </p>
-              {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm("")}
-                  className="text-blue-600 text-sm font-medium mt-2"
-                >
-                  Effacer la recherche
-                </button>
-              )}
-            </div>
-          ) : (
-            filteredClients.map((client) => (
-              <Link href={`/clients/${client.id}`} key={client.id}>
-                <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between hover:border-black transition group cursor-pointer">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center text-gray-700 font-bold text-lg group-hover:bg-black group-hover:text-white transition-colors border border-gray-100">
-                      {getInitials(client.full_name)}
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900">
-                        {client.full_name}
-                      </h3>
-                      <p className="text-sm text-gray-500">
-                        {client.city} • {client.phone}
-                      </p>
-                    </div>
-                  </div>
-                  <ChevronRight
-                    className="text-gray-300 group-hover:text-black transition"
-                    size={20}
-                  />
-                </div>
-              </Link>
-            ))
-          )}
-        </div>
-      </div>
-    </main>
+      </footer>
+    </div>
   );
 }
