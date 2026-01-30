@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+// IMPORT DU NOUVEAU LOGO
+import Logo from "@/components/Logo";
 import {
   ArrowRight,
   CheckCircle2,
@@ -17,13 +19,10 @@ export default function LandingPage() {
       {/* --- NAVBAR --- */}
       <nav className="fixed w-full bg-white/80 dark:bg-neutral-950/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 z-50 transition-colors">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-black dark:bg-white rounded-full border border-[#D4AF37] flex items-center justify-center">
-              <span className="text-[#D4AF37] dark:text-black font-bold text-xs">
-                OS
-              </span>
-            </div>
+          {/* Logo Officiel */}
+          <div className="flex items-center gap-3">
+            {/* On utilise le composant Logo ici, taille w-10 h-10 */}
+            <Logo className="w-10 h-10 shadow-sm rounded-full" />
             <span className="font-bold text-xl tracking-tight">CoutureOS</span>
           </div>
 
@@ -48,6 +47,11 @@ export default function LandingPage() {
       {/* --- HERO SECTION --- */}
       <section className="pt-32 pb-20 px-6">
         <div className="max-w-4xl mx-auto text-center">
+          {/* J'ai aussi ajouté le logo en plus grand ici pour l'impact */}
+          <div className="flex justify-center mb-8">
+            <Logo className="w-24 h-24 shadow-lg rounded-full" />
+          </div>
+
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-xs font-bold mb-6 border border-yellow-100 dark:border-yellow-700/50">
             ✨ La référence pour les ateliers modernes
           </div>

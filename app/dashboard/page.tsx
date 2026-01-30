@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+// 1. On importe le Logo
+import Logo from "@/components/Logo";
 import {
   Settings,
   UserPlus,
@@ -137,9 +139,13 @@ export default function Dashboard() {
             <p className="text-gray-400 text-xs font-bold tracking-wider uppercase mb-1">
               Tableau de bord
             </p>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              {shopName}
-            </h1>
+            {/* 2. Intégration du Logo à côté du Titre */}
+            <div className="flex items-center gap-3">
+              <Logo className="w-8 h-8 shadow-sm rounded-full" />
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                {shopName}
+              </h1>
+            </div>
           </div>
           <div className="flex gap-3">
             <Link
