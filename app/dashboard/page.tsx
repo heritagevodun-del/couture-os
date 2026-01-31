@@ -29,6 +29,7 @@ type DashboardStats = {
 
 type OrderWithClient = {
   id: string;
+  client_id: string; // <--- AJOUTÉ ICI (Important pour le lien)
   title: string;
   deadline: string | null;
   status: string;
@@ -72,15 +73,15 @@ export default function Dashboard() {
       const currency = profile?.currency || "FCFA";
       setShopName(profile?.shop_name || "L'Atelier");
 
-      // 3. Récupérer les Commandes
+      // 3. Récupérer les Commandes (AVEC client_id)
       const { data: orders } = await supabase
         .from("orders")
         .select(
           `
-          id, title, deadline, status, price, created_at,
+          id, client_id, title, deadline, status, price, created_at,
           clients (full_name)
         `,
-        )
+        ) // <--- J'ai ajouté 'client_id' ici
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
@@ -111,7 +112,7 @@ export default function Dashboard() {
     fetchData();
   }, [router]);
 
-  // Helper couleurs (Style V2)
+  // Helper couleurs
   const getStatusColor = (status: string) => {
     switch (status) {
       case "en_attente":
@@ -140,7 +141,7 @@ export default function Dashboard() {
 
   return (
     <main className="min-h-screen bg-[#F8F9FA] dark:bg-neutral-950 pb-24 transition-colors duration-300">
-      {/* --- HEADER (Correction: Retrait de 'sticky' pour libérer l'espace) --- */}
+      {/* --- HEADER --- */}
       <header className="bg-white dark:bg-neutral-900 px-6 pt-12 pb-12 border-b border-gray-100 dark:border-gray-800 shadow-sm z-20 transition-colors">
         <div className="max-w-5xl mx-auto">
           <div className="flex justify-between items-start mb-8">
@@ -164,7 +165,7 @@ export default function Dashboard() {
             </Link>
           </div>
 
-          {/* --- CARTE CA (Gold & Black) --- */}
+          {/* --- CARTE CA --- */}
           <div className="bg-black dark:bg-neutral-800 text-white p-6 md:p-8 rounded-2xl shadow-xl shadow-gray-200 dark:shadow-none relative overflow-hidden border border-gray-800 transition-all hover:scale-[1.01]">
             <div className="relative z-10">
               <div className="flex items-center gap-2 mb-2 text-white/60">
@@ -257,7 +258,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* --- PRODUCTION EN COURS --- */}
+        {/* --- PRODUCTION EN COURS (MODIFIÉE POUR LIENS) --- */}
         <div className="pb-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-bold text-gray-900 dark:text-gray-200 uppercase tracking-wide flex items-center gap-2">
@@ -290,8 +291,9 @@ export default function Dashboard() {
               </div>
             ) : (
               recentOrders.map((order) => (
-                <div
+                <Link
                   key={order.id}
+                  href={`/clients/${order.client_id}`} // <--- LE LIEN MAGIQUE EST ICI
                   className="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex items-center justify-between hover:border-gray-300 dark:hover:border-gray-600 transition-colors group cursor-pointer"
                 >
                   <div className="flex flex-col gap-1">
@@ -323,7 +325,7 @@ export default function Dashboard() {
                         : "Pas de date"}
                     </span>
                   </div>
-                </div>
+                </Link>
               ))
             )}
           </div>
