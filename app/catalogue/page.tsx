@@ -175,7 +175,7 @@ export default function Catalogue() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
             <Link
-              href="/"
+               href="/dashboard"
               className="text-sm text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white transition flex items-center gap-1 font-medium"
             >
               <ArrowLeft size={16} /> Retour à l&apos;atelier
