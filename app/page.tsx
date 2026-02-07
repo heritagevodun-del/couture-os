@@ -61,7 +61,7 @@ export default function LandingPage() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             {/* Redirection vers Pricing car l'offre gratuite n'existe plus */}
             <Link
-              href="/pricing"
+              href="/login"
               className="w-full sm:w-auto px-8 py-4 bg-black dark:bg-white text-white dark:text-black rounded-full font-bold text-lg hover:scale-105 transition-transform flex items-center justify-center gap-2 shadow-xl shadow-gray-200 dark:shadow-none"
             >
               Commencer maintenant (60j offerts) <ArrowRight size={20} />
