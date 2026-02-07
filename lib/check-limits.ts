@@ -1,17 +1,17 @@
 import { createClient } from "@/utils/supabase/server";
 
-// 1. DÉFINITION DES QUOTAS (Alignés sur la page Pricing)
+// 1. DÉFINITION DES QUOTAS
 export const QUOTAS = {
   free: {
     clients: 10,
     active_orders: 3,
   },
   start: {
-    clients: 50, // ✅ Cohérent avec votre offre Start
+    clients: 50,
     active_orders: 5,
   },
   pro: {
-    clients: Infinity, // ✅ Cohérent avec votre offre Pro
+    clients: Infinity,
     active_orders: Infinity,
   },
 };
@@ -35,19 +35,19 @@ export async function getSubscriptionTier(): Promise<SubscriptionTier> {
     .eq("id", user.id)
     .single();
 
-  // ⚠️ CORRECTION MAJEURE ICI :
-  // On accepte 'active' (payé) ET 'trialing' (essai gratuit 60j)
-  const validStatuses = ["active", "trialing"];
+  if (!profile) return "free";
 
-  if (
-    !profile ||
-    !profile.subscription_tier ||
-    !validStatuses.includes(profile.subscription_status) // <-- La correction est ici
-  ) {
-    return "free";
+  // 🔥 RÈGLE D'OR PLG : Trialing = PRO
+  if (profile.subscription_status === "trialing") {
+    return "pro";
   }
 
-  return profile.subscription_tier as SubscriptionTier;
+  // Si l'abonnement est actif
+  if (profile.subscription_status === "active") {
+    return (profile.subscription_tier as SubscriptionTier) || "free";
+  }
+
+  return "free";
 }
 
 /**
@@ -63,6 +63,7 @@ export async function canAddClient() {
 
   const tier = await getSubscriptionTier();
 
+  // Si Pro, pas de limite
   if (tier === "pro") return true;
 
   const { count } = await supabase
@@ -90,11 +91,14 @@ export async function canCreateOrder() {
 
   if (tier === "pro") return true;
 
+  // ⚠️ CORRECTION ICI : On utilise les statuts français de ton App
+  // On compte ce qui est EN COURS (donc pas 'termine' et pas 'annule')
   const { count } = await supabase
     .from("orders")
     .select("*", { count: "exact", head: true })
     .eq("user_id", user.id)
-    .not("status", "in", "('completed','cancelled')");
+    .neq("status", "termine") // <--- Harmonisé avec le Frontend
+    .neq("status", "annule"); // <--- Harmonisé avec le Frontend
 
   const limit = QUOTAS[tier].active_orders;
 
@@ -123,7 +127,8 @@ export async function getUsageStats() {
     .from("orders")
     .select("*", { count: "exact", head: true })
     .eq("user_id", user.id)
-    .not("status", "in", "('completed','cancelled')");
+    .neq("status", "termine") // <--- Harmonisé
+    .neq("status", "annule"); // <--- Harmonisé
 
   return {
     tier,

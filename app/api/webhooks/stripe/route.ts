@@ -32,36 +32,34 @@ export async function POST(req: Request) {
       process.env.STRIPE_WEBHOOK_SECRET!,
     );
   } catch (err: unknown) {
-    // ✅ Correction : on utilise unknown au lieu de any
     const errorMessage = err instanceof Error ? err.message : "Unknown Error";
     console.error(`❌ Erreur Signature: ${errorMessage}`);
     return new NextResponse(`Webhook Error: ${errorMessage}`, { status: 400 });
   }
-
-  const session = event.data.object as Stripe.Checkout.Session;
-  const subscription = event.data.object as Stripe.Subscription;
 
   // 2. Gestion du Cycle de Vie de l'Abonnement
   try {
     switch (event.type) {
       // ✅ CAS A : NOUVEL ABONNEMENT (Premier paiement ou début essai)
       case "checkout.session.completed": {
+        // CORRECTION : On caste ici, car on est SÛR que c'est une Session
+        const session = event.data.object as Stripe.Checkout.Session;
+
         const userId = session.metadata?.userId;
-        const planName = session.metadata?.planName;
+        const planName = session.metadata?.planName; // 'start' ou 'pro'
 
         if (!userId) {
           console.error("⚠️ Pas de userId dans les métadonnées");
           break;
         }
 
-        console.log(`🎉 Nouvel abonnement (ou Essai 60j) pour : ${userId}`);
+        console.log(`🎉 Nouvel abonnement pour : ${userId}`);
 
-        // On active l'accès immédiatement
         await supabaseAdmin
           .from("profiles")
           .update({
-            subscription_tier: planName, // 'start' ou 'pro'
-            subscription_status: "active", // On considère l'essai comme actif
+            subscription_tier: planName,
+            subscription_status: "active",
             stripe_customer_id: session.customer as string,
             stripe_subscription_id: session.subscription as string,
           })
@@ -71,8 +69,9 @@ export async function POST(req: Request) {
 
       // 💰 CAS B : PAIEMENT MENSUEL RÉUSSI (Renouvellement)
       case "invoice.payment_succeeded": {
-        // ✅ Correction : Suppression de la variable inutile 'subId'
-        const customerId = subscription.customer as string;
+        // CORRECTION : Ici, l'objet est une INVOICE, pas une Subscription
+        const invoice = event.data.object as Stripe.Invoice;
+        const customerId = invoice.customer as string;
 
         // On s'assure que le statut reste 'active'
         await supabaseAdmin
@@ -84,9 +83,11 @@ export async function POST(req: Request) {
         break;
       }
 
-      // ❌ CAS C : PAIEMENT ÉCHOUÉ (Carte expirée, fond insuffisants)
+      // ❌ CAS C : PAIEMENT ÉCHOUÉ (Carte expirée, fonds insuffisants)
       case "invoice.payment_failed": {
-        const customerId = subscription.customer as string;
+        // CORRECTION : Ici aussi, c'est une INVOICE
+        const invoice = event.data.object as Stripe.Invoice;
+        const customerId = invoice.customer as string;
 
         await supabaseAdmin
           .from("profiles")
@@ -99,6 +100,8 @@ export async function POST(req: Request) {
 
       // 🗑️ CAS D : ABONNEMENT ANNULÉ (Fin définitive)
       case "customer.subscription.deleted": {
+        // CORRECTION : Ici, c'est bien une SUBSCRIPTION
+        const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
 
         await supabaseAdmin

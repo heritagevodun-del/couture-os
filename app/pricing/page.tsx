@@ -1,9 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ShieldCheck, Zap, Smartphone, CreditCard } from "lucide-react"; // J'ai retiré 'Globe' qui ne servait pas
+import { useRouter } from "next/navigation"; // ✅ Ajout pour la redirection
+import {
+  Check,
+  ShieldCheck,
+  Zap,
+  Smartphone,
+  CreditCard,
+  ArrowLeft,
+} from "lucide-react";
+import Link from "next/link";
 
 export default function PricingPage() {
+  const router = useRouter();
   const [zone, setZone] = useState<"africa" | "world">("africa");
   const [loading, setLoading] = useState(false);
 
@@ -17,6 +27,15 @@ export default function PricingPage() {
       });
 
       const data = await res.json();
+
+      // 1. Gestion du cas "Non Connecté" (401)
+      if (res.status === 401) {
+        // On redirige vers le login en gardant en mémoire qu'il voulait payer
+        router.push("/login?next=/pricing");
+        return;
+      }
+
+      // 2. Gestion du succès (Redirection Stripe)
       if (data.url) {
         window.location.href = data.url;
       } else {
@@ -26,14 +45,23 @@ export default function PricingPage() {
     } catch (err) {
       console.error(err);
       setLoading(false);
-      alert("Une erreur est survenue.");
+      alert("Une erreur de connexion est survenue.");
     }
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-black flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-white dark:bg-black flex flex-col items-center justify-center p-4 relative">
+      {/* Bouton Retour discret (utile si on vient du dashboard) */}
+      <Link
+        href="/dashboard"
+        className="absolute top-6 left-6 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition text-gray-500"
+        aria-label="Retour"
+      >
+        <ArrowLeft size={24} />
+      </Link>
+
       {/* 1. HEADER SIMPLE */}
-      <div className="text-center mb-10 max-w-2xl">
+      <div className="text-center mb-10 max-w-2xl mt-10 md:mt-0">
         <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white mb-4 tracking-tight">
           Passez en mode <span className="text-[#D4AF37]">Pro</span>.
         </h1>
@@ -67,7 +95,7 @@ export default function PricingPage() {
       </div>
 
       {/* 3. LA CARTE DE PRIX UNIQUE */}
-      <div className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-2xl overflow-hidden relative">
+      <div className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-2xl overflow-hidden relative transition-all hover:scale-[1.01]">
         {/* BANDEAU PROMOTIONNEL */}
         <div className="bg-[#D4AF37] text-black text-center py-2 font-bold text-xs uppercase tracking-widest">
           🎉 60 Jours d&apos;essai gratuit
@@ -89,7 +117,7 @@ export default function PricingPage() {
 
           <p className="text-sm text-gray-500 mb-8">
             {zone === "africa"
-              ? "Tarif spécial résidents Afrique de l&apos;Ouest."
+              ? "Tarif spécial résidents Afrique de l'Ouest."
               : "Tarif standard international."}
           </p>
 
@@ -115,7 +143,7 @@ export default function PricingPage() {
           <button
             onClick={handleSubscribe}
             disabled={loading}
-            className="w-full bg-black dark:bg-white text-white dark:text-black font-bold py-4 rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+            className="w-full bg-black dark:bg-white text-white dark:text-black font-bold py-4 rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-gray-200 dark:shadow-none"
           >
             {loading ? (
               "Chargement..."

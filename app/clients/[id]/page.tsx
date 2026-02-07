@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
-import { supabase } from "../../lib/supabase";
+import { createClient } from "@/utils/supabase/client"; // ✅ Correction Import
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -34,14 +34,13 @@ type Client = {
   measurements: any;
 };
 
-// MISE À JOUR : Ajout du champ 'advance'
 type Order = {
   id: string;
   title: string;
   status: string;
   deadline: string;
   price: number;
-  advance: number; // <--- ICI
+  advance: number;
   description: string;
   created_at: string;
 };
@@ -59,8 +58,10 @@ export default function ClientDetails({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // ✅ Next.js 15 : Déballage des params avec use()
   const { id } = use(params);
   const router = useRouter();
+  const supabase = createClient(); // ✅ Client Supabase unique
 
   const [client, setClient] = useState<Client | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -104,7 +105,7 @@ export default function ClientDetails({
 
       if (profile) {
         setShopProfile({
-          shop_name: profile.shop_name,
+          shop_name: profile.shop_name || "Mon Atelier",
           shop_address: profile.shop_address || "",
           shop_phone: profile.shop_phone || "",
           email: user.email || "",
@@ -112,23 +113,28 @@ export default function ClientDetails({
         });
       }
 
-      // B. Client
-      const { data: clientData } = await supabase
+      // B. Client (Sécurisé par RLS)
+      const { data: clientData, error: clientError } = await supabase
         .from("clients")
         .select("*")
         .eq("id", id)
+        .eq("user_id", user.id) // Double sécurité
         .single();
 
-      if (clientData) {
-        setClient(clientData);
-        setTempMeasurements(clientData.measurements || {});
-        setTempClientData({
-          full_name: clientData.full_name,
-          phone: clientData.phone,
-          city: clientData.city,
-          notes: clientData.notes || "",
-        });
+      if (clientError || !clientData) {
+        console.error("Erreur client:", clientError);
+        setLoading(false);
+        return; // Le render affichera "Client introuvable"
       }
+
+      setClient(clientData);
+      setTempMeasurements(clientData.measurements || {});
+      setTempClientData({
+        full_name: clientData.full_name,
+        phone: clientData.phone,
+        city: clientData.city,
+        notes: clientData.notes || "",
+      });
 
       // C. Commandes
       const { data: ordersData } = await supabase
@@ -142,7 +148,7 @@ export default function ClientDetails({
     };
 
     fetchData();
-  }, [id, router]);
+  }, [id, router, supabase]);
 
   // --- 2. LOGIQUE MÉTIER ---
 
@@ -197,23 +203,41 @@ export default function ClientDetails({
     if (!client) return;
     if (
       !confirm(
-        "🛑 ATTENTION : Supprimer ce client effacera aussi son historique. Continuer ?",
+        "🛑 ATTENTION : Supprimer ce client effacera aussi son historique de commandes. Continuer ?",
       )
     )
       return;
+
     setLoading(true);
+
+    // Suppression en cascade manuelle (si la DB ne le fait pas)
     await supabase.from("orders").delete().eq("client_id", client.id);
-    await supabase.from("clients").delete().eq("id", client.id);
-    router.push("/clients");
+    const { error } = await supabase
+      .from("clients")
+      .delete()
+      .eq("id", client.id);
+
+    if (error) {
+      alert("Erreur lors de la suppression");
+      setLoading(false);
+    } else {
+      router.push("/clients");
+    }
   };
 
-  // Génération Facture (MISE À JOUR)
+  // Génération Facture
   const handleDownloadInvoice = (e: React.MouseEvent, order: Order) => {
     e.stopPropagation();
     if (!client) return;
 
-    const index = orders.findIndex((o) => o.id === order.id);
-    const sequentialNumber = orders.length - index;
+    // Calcul simple du numéro de commande client (1, 2, 3...)
+    // Basé sur l'ordre chronologique inverse
+    const sortedOrders = [...orders].sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    const sequentialNumber =
+      sortedOrders.findIndex((o) => o.id === order.id) + 1;
 
     const currentShop = shopProfile || {
       shop_name: "Votre Atelier",
@@ -239,18 +263,18 @@ export default function ClientDetails({
       order: {
         id: order.id,
         title: order.title,
-        date: order.created_at, // Date réelle
+        date: order.created_at,
         deadline: order.deadline,
         description: order.description,
         price: order.price,
-        advance: order.advance || 0, // ON PASSE L'AVANCE ICI
+        advance: order.advance || 0,
         status: order.status,
         client_order_number: sequentialNumber,
       },
     });
   };
 
-  // WhatsApp (MISE À JOUR : Calcul du reste à payer)
+  // WhatsApp
   const sendWhatsApp = (type: "reminder" | "ready", order: Order) => {
     if (!client?.phone) return alert("Pas de numéro de téléphone.");
     const shop = shopProfile?.shop_name || "L'Atelier";
@@ -265,10 +289,10 @@ export default function ClientDetails({
     } else {
       msg = `Bonne nouvelle ${client.full_name} ! 🎉 Votre commande "${order.title}" est prête. Reste à payer : ${reste.toLocaleString()} ${devise}. À très vite !`;
     }
-    window.open(
-      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`,
-      "_blank",
-    );
+
+    // Ouverture sécurisée
+    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   // --- RENDER ---
@@ -282,77 +306,89 @@ export default function ClientDetails({
 
   if (!client)
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950 text-gray-500">
-        Client introuvable.
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-neutral-950 text-gray-500 gap-4">
+        <p>Client introuvable ou supprimé.</p>
+        <Link href="/clients" className="text-black dark:text-white underline">
+          Retour aux clients
+        </Link>
       </div>
     );
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-neutral-950 pb-24 transition-colors duration-300">
-      {/* HEADER NAV */}
-      <div className="bg-white dark:bg-neutral-900 px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 z-20">
+      {/* HEADER NAV STICKY */}
+      <div className="bg-white dark:bg-neutral-900 px-4 py-3 md:px-6 md:py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 z-20 shadow-sm md:shadow-none">
         <Link
           href="/clients"
           className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white flex items-center gap-2 text-sm font-bold transition-colors"
         >
-          <ArrowLeft size={18} /> Retour
+          <ArrowLeft size={18} />{" "}
+          <span className="hidden md:inline">Retour liste</span>
         </Link>
         <div className="flex gap-2">
           <button
             onClick={() => setIsEditingClient(true)}
             className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-colors"
             aria-label="Modifier le client"
+            title="Modifier"
           >
-            <Edit2 size={16} />
+            <Edit2 size={18} />
           </button>
           <button
             onClick={handleDeleteClient}
             className="p-2 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-colors"
             aria-label="Supprimer le client"
+            title="Supprimer"
           >
-            <Trash2 size={16} />
+            <Trash2 size={18} />
           </button>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto p-6 space-y-6">
+      <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
         {/* CARTE IDENTITÉ */}
-        <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 flex flex-col items-center text-center">
-          <div className="w-24 h-24 bg-black dark:bg-white text-white dark:text-black rounded-full flex items-center justify-center text-3xl font-bold mb-4 shadow-lg">
+        <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 flex flex-col items-center text-center relative overflow-hidden">
+          {/* Fond décoratif subtil */}
+          <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-gray-50 to-transparent dark:from-gray-800/50 dark:to-transparent -z-0" />
+
+          <div className="relative z-10 w-24 h-24 bg-black dark:bg-white text-white dark:text-black rounded-full flex items-center justify-center text-3xl font-bold mb-4 shadow-xl ring-4 ring-white dark:ring-neutral-900">
             {client.full_name.charAt(0).toUpperCase()}
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+
+          <h1 className="relative z-10 text-2xl font-bold text-gray-900 dark:text-white mb-1">
             {client.full_name}
           </h1>
-          <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-6">
-            <span className="flex items-center gap-1">
-              <Phone size={14} /> {client.phone}
+
+          <div className="relative z-10 flex flex-wrap justify-center items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-6">
+            <span className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">
+              <Phone size={12} /> {client.phone}
             </span>
             {client.city && (
-              <span className="flex items-center gap-1">
-                <MapPin size={14} /> {client.city}
+              <span className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">
+                <MapPin size={12} /> {client.city}
               </span>
             )}
           </div>
 
-          <div className="flex gap-3 w-full max-w-sm">
+          <div className="relative z-10 flex gap-3 w-full max-w-sm">
             <a
               href={`tel:${client.phone}`}
-              className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white py-3 rounded-xl font-bold text-sm hover:opacity-80 transition flex justify-center items-center gap-2"
+              className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white py-3 rounded-xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition flex justify-center items-center gap-2"
             >
-              <Phone size={16} /> Appeler
+              <Phone size={18} /> Appeler
             </a>
             <a
               href={`https://wa.me/${client.phone.replace(/[^0-9]/g, "")}`}
               target="_blank"
-              className="flex-1 bg-[#25D366] text-white py-3 rounded-xl font-bold text-sm hover:opacity-90 transition flex justify-center items-center gap-2"
+              rel="noopener noreferrer"
+              className="flex-1 bg-[#25D366] text-white py-3 rounded-xl font-bold text-sm hover:opacity-90 transition flex justify-center items-center gap-2 shadow-lg shadow-green-100 dark:shadow-none"
             >
-              <MessageCircle size={16} /> WhatsApp
+              <MessageCircle size={18} /> WhatsApp
             </a>
           </div>
 
           {client.notes && (
-            <div className="mt-6 w-full bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-900/30 p-4 rounded-xl text-left flex gap-3">
+            <div className="relative z-10 mt-6 w-full bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-900/30 p-4 rounded-xl text-left flex gap-3">
               <StickyNote className="text-yellow-600 shrink-0" size={20} />
               <p className="text-sm text-gray-800 dark:text-gray-300 italic">
                 {client.notes}
@@ -363,14 +399,14 @@ export default function ClientDetails({
 
         {/* SECTION MESURES */}
         <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
-          <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+          <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/30">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
               <Ruler size={16} /> Mesures ({currentTemplate.label})
             </h2>
             {!isEditingMeasurements ? (
               <button
                 onClick={() => setIsEditingMeasurements(true)}
-                className="text-xs font-bold text-black dark:text-white hover:underline"
+                className="text-xs font-bold text-black dark:text-white hover:underline bg-white dark:bg-black px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm"
               >
                 Modifier
               </button>
@@ -378,13 +414,13 @@ export default function ClientDetails({
               <div className="flex gap-2">
                 <button
                   onClick={() => setIsEditingMeasurements(false)}
-                  className="text-xs font-bold text-gray-500 hover:text-black"
+                  className="text-xs font-bold text-gray-500 hover:text-black px-3 py-1.5"
                 >
                   Annuler
                 </button>
                 <button
                   onClick={handleSaveMeasurements}
-                  className="text-xs font-bold text-green-600 hover:text-green-700"
+                  className="text-xs font-bold text-white bg-black dark:bg-white dark:text-black px-3 py-1.5 rounded-lg shadow-sm"
                 >
                   Sauvegarder
                 </button>
@@ -401,7 +437,7 @@ export default function ClientDetails({
                 return (
                   <div
                     key={key}
-                    className="bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700"
+                    className="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-100 dark:border-gray-800"
                   >
                     <span className="block text-[10px] uppercase font-bold text-gray-400 mb-1 truncate">
                       {label}
@@ -409,7 +445,8 @@ export default function ClientDetails({
                     {isEditingMeasurements ? (
                       <input
                         type="number"
-                        className="w-full bg-transparent border-b border-gray-300 dark:border-gray-600 focus:border-black dark:focus:border-white outline-none font-bold text-gray-900 dark:text-white"
+                        inputMode="decimal"
+                        className="w-full bg-transparent border-b border-gray-300 dark:border-gray-600 focus:border-black dark:focus:border-white outline-none font-bold text-gray-900 dark:text-white p-0 text-lg"
                         value={value}
                         onChange={(e) =>
                           setTempMeasurements((prev) => ({
@@ -433,22 +470,22 @@ export default function ClientDetails({
             </div>
             {Object.keys(tempMeasurements).filter((k) => !k.startsWith("_"))
               .length === 0 && (
-              <p className="text-center text-gray-400 text-sm italic">
-                Aucune mesure enregistrée.
+              <p className="text-center text-gray-400 text-sm italic py-4">
+                Aucune mesure enregistrée pour ce modèle.
               </p>
             )}
           </div>
         </div>
 
-        {/* SECTION COMMANDES (Avec BOUTON CREER et GESTION AVANCE) */}
+        {/* SECTION COMMANDES */}
         <div>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 px-1">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
               <ShoppingBag size={16} /> Historique Commandes
             </h2>
             <Link
               href={`/clients/${id}/new-order`}
-              className="flex items-center gap-1 bg-black dark:bg-white text-white dark:text-black px-3 py-1.5 rounded-lg text-xs font-bold hover:scale-105 transition-transform shadow-sm"
+              className="flex items-center gap-1 bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-xl text-xs font-bold hover:scale-[1.02] transition-transform shadow-lg shadow-gray-200 dark:shadow-none"
             >
               <Plus size={14} /> Créer
             </Link>
@@ -456,7 +493,8 @@ export default function ClientDetails({
 
           <div className="space-y-3">
             {orders.length === 0 ? (
-              <div className="text-center py-10 border border-dashed border-gray-300 dark:border-gray-700 rounded-2xl text-gray-400 text-sm">
+              <div className="text-center py-12 border border-dashed border-gray-200 dark:border-gray-800 rounded-2xl text-gray-400 text-sm bg-gray-50 dark:bg-gray-900/50">
+                <ShoppingBag size={32} className="mx-auto mb-2 opacity-20" />
                 Aucune commande pour ce client.
               </div>
             ) : (
@@ -465,33 +503,38 @@ export default function ClientDetails({
                 return (
                   <div
                     key={order.id}
-                    className="bg-white dark:bg-neutral-900 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-3"
+                    className="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-3 transition hover:shadow-md"
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="font-bold text-gray-900 dark:text-white">
+                        <h3 className="font-bold text-gray-900 dark:text-white text-base">
                           {order.title}
                         </h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                           Livraison :{" "}
-                          {new Date(order.deadline).toLocaleDateString()}
+                          <span className="font-medium">
+                            {new Date(order.deadline).toLocaleDateString()}
+                          </span>
                         </p>
                       </div>
                       <div className="text-right">
-                        <span className="font-bold text-gray-900 dark:text-white block">
-                          {order.price.toLocaleString()} {shopProfile?.currency}
+                        <span className="font-bold text-gray-900 dark:text-white block text-lg">
+                          {order.price.toLocaleString()}{" "}
+                          <span className="text-sm font-normal text-gray-500">
+                            {shopProfile?.currency}
+                          </span>
                         </span>
                         {/* Affiche l'avance ou le reste à payer */}
                         {order.advance > 0 ? (
                           <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${reste > 0 ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${reste > 0 ? "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400" : "bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400"}`}
                           >
                             {reste > 0
                               ? `Reste: ${reste.toLocaleString()}`
                               : "Payé ✔"}
                           </span>
                         ) : (
-                          <span className="text-[10px] text-gray-400">
+                          <span className="text-[10px] text-gray-400 px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded-full">
                             0 avance
                           </span>
                         )}
@@ -500,12 +543,12 @@ export default function ClientDetails({
 
                     <div className="flex items-center justify-between pt-3 border-t border-gray-50 dark:border-gray-800">
                       <span
-                        className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${
+                        className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wide ${
                           order.status === "termine"
-                            ? "bg-green-100 text-green-700"
+                            ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
                             : order.status === "en_cours"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-yellow-100 text-yellow-700"
+                              ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                              : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
                         }`}
                       >
                         {order.status.replace("_", " ")}
@@ -514,7 +557,7 @@ export default function ClientDetails({
                       <div className="flex gap-2">
                         <button
                           onClick={(e) => handleDownloadInvoice(e, order)}
-                          className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition"
+                          className="p-2 bg-gray-50 dark:bg-gray-800 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition border border-gray-100 dark:border-gray-700"
                           title="Facture"
                           aria-label="Télécharger la facture"
                         >
@@ -522,7 +565,7 @@ export default function ClientDetails({
                         </button>
                         <button
                           onClick={() => sendWhatsApp("ready", order)}
-                          className="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition"
+                          className="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-xl hover:bg-green-100 dark:hover:bg-green-900/40 transition border border-green-100 dark:border-green-900/30"
                           title="Prévenir client"
                           aria-label="Envoyer message WhatsApp"
                         >
@@ -538,28 +581,29 @@ export default function ClientDetails({
         </div>
       </div>
 
-      {/* MODAL EDIT CLIENT (Inchangé) */}
+      {/* MODAL EDIT CLIENT */}
       {isEditingClient && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white dark:bg-neutral-900 w-full max-w-sm rounded-2xl p-6 shadow-2xl border border-gray-100 dark:border-gray-800">
-            <div className="flex justify-between items-center mb-4 border-b border-gray-100 dark:border-gray-800 pb-2">
-              <h3 className="font-bold text-lg dark:text-white">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-neutral-900 w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-gray-100 dark:border-gray-800 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-xl dark:text-white">
                 Modifier Client
               </h3>
               <button
                 onClick={() => setIsEditingClient(false)}
+                className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition"
                 aria-label="Fermer"
               >
-                <X className="dark:text-white" size={20} />
+                <X className="dark:text-white" size={24} />
               </button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">
+                <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">
                   Nom complet
                 </label>
                 <input
-                  className="w-full p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white"
+                  className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white font-medium"
                   placeholder="Nom complet"
                   value={tempClientData.full_name}
                   onChange={(e) =>
@@ -571,11 +615,12 @@ export default function ClientDetails({
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">
+                <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">
                   Téléphone
                 </label>
                 <input
-                  className="w-full p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white"
+                  type="tel"
+                  className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white font-medium"
                   placeholder="Téléphone"
                   value={tempClientData.phone}
                   onChange={(e) =>
@@ -587,11 +632,11 @@ export default function ClientDetails({
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">
+                <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">
                   Ville
                 </label>
                 <input
-                  className="w-full p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white"
+                  className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white font-medium"
                   placeholder="Ville"
                   value={tempClientData.city}
                   onChange={(e) =>
@@ -603,11 +648,11 @@ export default function ClientDetails({
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">
+                <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">
                   Notes
                 </label>
                 <textarea
-                  className="w-full p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white resize-none dark:text-white"
+                  className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white resize-none dark:text-white font-medium"
                   placeholder="Notes..."
                   rows={3}
                   value={tempClientData.notes}
@@ -621,7 +666,7 @@ export default function ClientDetails({
               </div>
               <button
                 onClick={handleUpdateClient}
-                className="w-full bg-black dark:bg-white text-white dark:text-black font-bold py-3 rounded-xl hover:scale-[1.02] transition-transform"
+                className="w-full bg-black dark:bg-white text-white dark:text-black font-bold py-4 rounded-xl hover:scale-[1.02] transition-transform text-lg shadow-lg"
               >
                 Enregistrer
               </button>

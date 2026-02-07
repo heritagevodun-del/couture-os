@@ -1,5 +1,5 @@
 import SubscriptionGuard from "@/components/SubscriptionGuard";
-import DashboardShell from "@/components/DashboardShell"; // 👈 C'est lui qui gère le Mobile maintenant
+import DashboardShell from "@/components/DashboardShell";
 
 export default function DashboardLayout({
   children,
@@ -7,9 +7,9 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    // 🔒 1. Le Vigile vérifie si on a le droit d'entrer (60 jours ou Paiement)
+    // 🔒 1. Le Vigile vérifie l'abonnement
     <SubscriptionGuard>
-      {/* 📱 2. Le Shell gère l'affichage (Barre latérale, Menu Mobile, Bandeau) */}
+      {/* 📱 2. Le Shell gère la navigation (Desktop + Mobile) */}
       <DashboardShell>{children}</DashboardShell>
     </SubscriptionGuard>
   );

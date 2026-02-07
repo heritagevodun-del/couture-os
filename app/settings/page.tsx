@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabase";
+import { createClient } from "@/utils/supabase/client"; // ✅ Correction Import
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -17,11 +17,12 @@ import {
   Loader2,
   Coins,
   Camera,
-  CheckCircle2, // On utilise l'icône officielle, pas une fonction perso
+  CheckCircle2,
 } from "lucide-react";
 
 export default function SettingsPage() {
   const router = useRouter();
+  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [userEmail, setUserEmail] = useState("");
@@ -76,7 +77,7 @@ export default function SettingsPage() {
       setLoading(false);
     };
     getProfile();
-  }, [router]);
+  }, [router, supabase]);
 
   // --- 2. GESTION AVATAR ---
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -113,7 +114,7 @@ export default function SettingsPage() {
       const fileExt = avatarFile.name.split(".").pop();
       const fileName = `avatar_${user.id}_${Date.now()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage
-        .from("avatars")
+        .from("avatars") // Assure-toi que ce bucket existe et est public
         .upload(fileName, avatarFile, { upsert: true });
 
       if (uploadError) {
@@ -185,7 +186,7 @@ export default function SettingsPage() {
       // Cascade delete manuelle pour nettoyer proprement
       await supabase.from("orders").delete().eq("user_id", user.id);
       await supabase.from("clients").delete().eq("user_id", user.id);
-      await supabase.from("models").delete().eq("user_id", user.id); // ou 'catalog'
+      await supabase.from("models").delete().eq("user_id", user.id);
       await supabase.from("profiles").delete().eq("id", user.id);
 
       await supabase.auth.signOut();

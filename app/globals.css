@@ -3,58 +3,54 @@
 @tailwind utilities;
 
 /* --- 1. CONFIGURATION DE BASE (Mode Clair/Sombre) --- */
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 248, 249, 250; /* Gris très clair */
-  --background-end-rgb: 255, 255, 255;
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 10, 10, 10; /* Noir profond */
-    --background-end-rgb: 0, 0, 0;
+    --background: 255 255 255;
+    --foreground: 23 23 23; /* Neutral-900 */
+    --gold-primary: #D4AF37; /* Ta couleur signature */
+  }
+
+  .dark {
+    --background: 10 10 10; /* Neutral-950 */
+    --foreground: 255 255 255;
+  }
+
+  html,
+  body {
+    padding: 0;
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* 🔒 SÉCURITÉ MOBILE */
+    overflow-x: hidden; 
+    width: 100%;
+  }
+
+  body {
+    /* CORRECTION ICI : On retire <alpha-value> qui causait l'erreur */
+    background-color: rgb(var(--background)); 
+    color: rgb(var(--foreground));
   }
 }
 
-/* --- 2. STYLE DU CORPS (BODY) --- */
-html,
-body {
-  padding: 0;
-  margin: 0;
-  scroll-behavior: smooth; /* Défilement fluide */
-  -webkit-font-smoothing: antialiased; /* Texte net sur Mac */
-  -moz-osx-font-smoothing: grayscale;
-}
-
-body {
-  color: rgb(var(--foreground-rgb));
-  /* Transition douce pour le changement Dark/Light mode */
-  transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-/* --- 3. SCROLLBAR LUXE (Chrome, Edge, Safari) --- */
-/* Piste (Fond) */
+/* --- 2. SCROLLBAR LUXE --- */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
-/* Pouce (Partie qui bouge) */
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db; /* Gris clair */
+  background: #d1d5db;
   border-radius: 10px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af; /* Gris plus foncé au survol */
+  background: #9ca3af;
 }
 
-/* Scrollbar en Dark Mode */
 @media (prefers-color-scheme: dark) {
   ::-webkit-scrollbar-thumb {
     background: #333;
@@ -64,24 +60,12 @@ body {
   }
 }
 
-/* --- 4. SURLIGNAGE TEXTE (EFFET GOLD) --- */
+/* --- 3. EFFETS D'INTERFACE --- */
 ::selection {
-  background-color: #D4AF37; /* OR */
+  background-color: var(--gold-primary);
   color: white;
 }
 
-/* --- 5. UTILITAIRES & EFFETS SPÉCIAUX --- */
-
-/* Cacher la scrollbar (Dashboard horizontal) */
-.scrollbar-hide::-webkit-scrollbar {
-    display: none;
-}
-.scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-}
-
-/* Animations d'entrée (Fade In) */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -91,18 +75,27 @@ body {
   animation: fadeIn 0.4s ease-out forwards;
 }
 
-/* --- LE TOUCHER COUTURE (Ton code Logo) --- */
-.logo-bouton-bg {
-  background-image: 
-    radial-gradient(circle at 35% 35%, transparent 2px, #1a1a1a 3px), 
-    radial-gradient(circle at 65% 35%, transparent 2px, #1a1a1a 3px), 
-    radial-gradient(circle at 35% 65%, transparent 2px, #1a1a1a 3px), 
-    radial-gradient(circle at 65% 65%, transparent 2px, #1a1a1a 3px);
-}
+/* --- 4. UTILITAIRES --- */
+@layer utilities {
+  /* Cacher la scrollbar proprement */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 
-/* Version Dark Mode pour le bouton (en blanc sur fond noir) */
-@media (prefers-color-scheme: dark) {
+  /* Fond Texturé Luxe */
   .logo-bouton-bg {
+    background-image: 
+      radial-gradient(circle at 35% 35%, transparent 2px, #1a1a1a 3px), 
+      radial-gradient(circle at 65% 35%, transparent 2px, #1a1a1a 3px), 
+      radial-gradient(circle at 35% 65%, transparent 2px, #1a1a1a 3px), 
+      radial-gradient(circle at 65% 65%, transparent 2px, #1a1a1a 3px);
+  }
+  
+  .dark .logo-bouton-bg {
     background-image: 
       radial-gradient(circle at 35% 35%, transparent 2px, #ffffff 3px), 
       radial-gradient(circle at 65% 35%, transparent 2px, #ffffff 3px), 

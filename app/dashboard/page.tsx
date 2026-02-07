@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { createClient } from "@/utils/supabase/client"; // ✅ Correction Import
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
@@ -29,7 +29,7 @@ type DashboardStats = {
 
 type OrderWithClient = {
   id: string;
-  client_id: string; // <--- AJOUTÉ ICI (Important pour le lien)
+  client_id: string;
   title: string;
   deadline: string | null;
   status: string;
@@ -39,6 +39,7 @@ type OrderWithClient = {
 
 export default function Dashboard() {
   const router = useRouter();
+  const supabase = createClient(); // ✅ Instance locale
   const [loading, setLoading] = useState(true);
   const [shopName, setShopName] = useState("");
 
@@ -81,7 +82,7 @@ export default function Dashboard() {
           id, client_id, title, deadline, status, price, created_at,
           clients (full_name)
         `,
-        ) // <--- J'ai ajouté 'client_id' ici
+        )
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
@@ -92,8 +93,13 @@ export default function Dashboard() {
         .eq("user_id", user.id);
 
       // --- CALCULS ---
+      // On caste proprement pour TypeScript
       const safeOrders = (orders || []) as unknown as OrderWithClient[];
+
+      // Calcul du revenu global
       const revenue = safeOrders.reduce((sum, o) => sum + (o.price || 0), 0);
+
+      // Commandes actives (ni terminées, ni annulées)
       const activeOrders = safeOrders.filter(
         (o) => o.status !== "termine" && o.status !== "annule",
       );
@@ -110,7 +116,7 @@ export default function Dashboard() {
     };
 
     fetchData();
-  }, [router]);
+  }, [router, supabase]);
 
   // Helper couleurs
   const getStatusColor = (status: string) => {
@@ -142,7 +148,7 @@ export default function Dashboard() {
   return (
     <main className="min-h-screen bg-[#F8F9FA] dark:bg-neutral-950 pb-24 transition-colors duration-300">
       {/* --- HEADER --- */}
-      <header className="bg-white dark:bg-neutral-900 px-6 pt-12 pb-12 border-b border-gray-100 dark:border-gray-800 shadow-sm z-20 transition-colors">
+      <header className="bg-white dark:bg-neutral-900 px-6 pt-8 pb-12 border-b border-gray-100 dark:border-gray-800 shadow-sm z-20 transition-colors">
         <div className="max-w-5xl mx-auto">
           <div className="flex justify-between items-start mb-8">
             <div>
@@ -188,11 +194,11 @@ export default function Dashboard() {
       </header>
 
       {/* --- CONTENU PRINCIPAL --- */}
-      <div className="max-w-5xl mx-auto px-6 -mt-8 relative z-10">
+      <div className="max-w-5xl mx-auto px-4 md:px-6 -mt-8 relative z-10">
         {/* --- STATS GRID --- */}
         <div className="grid grid-cols-2 gap-4 md:gap-6 mb-8">
           <Link
-            href="/clients"
+            href="/clients" // Redirige vers la liste des clients pour voir les commandes par client
             className="bg-white dark:bg-neutral-900 p-5 md:p-6 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col items-center justify-center gap-2 text-center group hover:border-[#D4AF37] dark:hover:border-[#D4AF37] transition-all cursor-pointer"
           >
             <div className="w-12 h-12 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center mb-1 group-hover:scale-110 transition-transform">
@@ -226,7 +232,7 @@ export default function Dashboard() {
           </Link>
         </div>
 
-        {/* --- ACTIONS RAPIDES --- */}
+        {/* --- ACTIONS RAPIDES (Scroll horizontal mobile) --- */}
         <div className="mb-8">
           <h2 className="text-sm font-bold text-gray-900 dark:text-gray-200 uppercase tracking-wide mb-4 flex items-center gap-2">
             <PlusCircle size={16} /> Actions Rapides
@@ -258,7 +264,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* --- PRODUCTION EN COURS (MODIFIÉE POUR LIENS) --- */}
+        {/* --- PRODUCTION EN COURS --- */}
         <div className="pb-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-bold text-gray-900 dark:text-gray-200 uppercase tracking-wide flex items-center gap-2">
@@ -293,7 +299,7 @@ export default function Dashboard() {
               recentOrders.map((order) => (
                 <Link
                   key={order.id}
-                  href={`/clients/${order.client_id}`} // <--- LE LIEN MAGIQUE EST ICI
+                  href={`/clients/${order.client_id}`} // ✅ Lien fonctionnel grâce à client_id
                   className="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex items-center justify-between hover:border-gray-300 dark:hover:border-gray-600 transition-colors group cursor-pointer"
                 >
                   <div className="flex flex-col gap-1">

@@ -3,7 +3,7 @@ import { stripe } from "@/lib/stripe";
 import { createClient } from "@/utils/supabase/server";
 import Stripe from "stripe";
 
-// 👇 TES IDs (Vérifie qu'ils sont toujours bons)
+// 👇 REMETS TES VRAIS IDs ICI
 const PRICES = {
   africa: "price_1Sy86ZEQ6UKEvtgmhJyHZjtc", // <--- Remets ton ID 2000 FCFA
   world: "price_1Sy88qEQ6UKEvtgmiPuj2wXY", // <--- Remets ton ID 9.99 EUR
@@ -87,12 +87,15 @@ export async function POST(request: Request) {
 
     // 2. Configuration selon la zone
     let priceId = PRICES.world;
+
+    // 🛠️ CORRECTION TYPAGE : On définit le type exact autorisé par Stripe (plus de 'any')
     let allowedCountries:
       | Stripe.Checkout.SessionCreateParams.ShippingAddressCollection.AllowedCountry[]
       | undefined = undefined;
 
     if (zone === "africa") {
       priceId = PRICES.africa;
+      // On force le typage ici pour dire à TypeScript "T'inquiète, ces codes pays sont valides"
       allowedCountries =
         AFRICA_COUNTRIES as Stripe.Checkout.SessionCreateParams.ShippingAddressCollection.AllowedCountry[];
     }
@@ -108,10 +111,6 @@ export async function POST(request: Request) {
           quantity: 1,
         },
       ],
-
-      // ❌ ON A SUPPRIMÉ LA LIGNE 'subscription_data' avec 'trial_period_days'
-      // Le client paie donc IMMÉDIATEMENT.
-
       billing_address_collection: "required",
       shipping_address_collection:
         zone === "africa"
@@ -119,13 +118,11 @@ export async function POST(request: Request) {
               allowed_countries: allowedCountries!,
             }
           : undefined,
-
       metadata: {
         userId: user.id,
         planName: "premium",
         zone: zone,
       },
-
       success_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/dashboard?payment=success`,
       cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/pricing?payment=cancelled`,
       locale: "fr",
@@ -135,7 +132,7 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     console.error("[STRIPE ERROR]", error);
 
-    let errorMessage = "Erreur lors de l'initialisation du paiement.";
+    let errorMessage = "Erreur interne Stripe";
     if (error instanceof Error) {
       errorMessage = error.message;
     }
