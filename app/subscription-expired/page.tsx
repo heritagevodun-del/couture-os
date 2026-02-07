@@ -16,7 +16,7 @@ export default function ExpiredPage() {
         </h1>
 
         <p className="text-gray-500 dark:text-gray-400 mb-8">
-          Votre période d&lsquo;essai est terminée ou votre paiement a échoué.
+          Votre période d&apos;essai est terminée ou votre paiement a échoué.
           <br />
           Vos données (Clients, Mesures) sont en sécurité, mais vous devez
           réactiver votre abonnement pour y accéder.
@@ -34,7 +34,7 @@ export default function ExpiredPage() {
             href="/"
             className="block text-sm text-gray-400 hover:text-gray-600"
           >
-            Retour à l&lsquo;accueil
+            Retour à l&apos;accueil
           </Link>
         </div>
       </div>

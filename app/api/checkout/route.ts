@@ -1,76 +1,76 @@
 import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { createClient } from "@/utils/supabase/server";
-import Stripe from "stripe"; // 👈 C'est cet import qui corrigeait l'erreur "Namespace Stripe introuvable"
+import Stripe from "stripe";
 
-// 👇 COLLEZ VOS NOUVEAUX IDs ICI
+// 👇 TES IDs (Vérifie qu'ils sont toujours bons)
 const PRICES = {
-  africa: "price_1Sy86ZEQ6UKEvtgmhJyHZjtc", // <--- L'ID du prix à 2000 XOF
-  world: "price_1Sy88qEQ6UKEvtgmiPuj2wXY", // <--- L'ID du prix à 9.99 EUR
+  africa: "price_1Sy86ZEQ6UKEvtgmhJyHZjtc", // <--- Remets ton ID 2000 FCFA
+  world: "price_1Sy88qEQ6UKEvtgmiPuj2wXY", // <--- Remets ton ID 9.99 EUR
 };
 
-// 🌍 LISTE COMPLÈTE DES PAYS D'AFRIQUE (Codes ISO Alpha-2)
+// 🌍 LISTE PAYS AFRIQUE
 const AFRICA_COUNTRIES = [
-  "DZ", // Algérie
-  "AO", // Angola
-  "BJ", // Bénin
-  "BW", // Botswana
-  "BF", // Burkina Faso
-  "BI", // Burundi
-  "CM", // Cameroun
-  "CV", // Cap-Vert
-  "CF", // République centrafricaine
-  "TD", // Tchad
-  "KM", // Comores
-  "CG", // Congo (Brazzaville)
-  "CD", // Congo (RDC)
-  "CI", // Côte d'Ivoire
-  "DJ", // Djibouti
-  "EG", // Égypte
-  "GQ", // Guinée équatoriale
-  "ER", // Érythrée
-  "SZ", // Eswatini
-  "ET", // Éthiopie
-  "GA", // Gabon
-  "GM", // Gambie
-  "GH", // Ghana
-  "GN", // Guinée
-  "GW", // Guinée-Bissau
-  "KE", // Kenya
-  "LS", // Lesotho
-  "LR", // Liberia
-  "LY", // Libye
-  "MG", // Madagascar
-  "MW", // Malawi
-  "ML", // Mali
-  "MR", // Mauritanie
-  "MU", // Maurice
-  "MA", // Maroc
-  "MZ", // Mozambique
-  "NA", // Namibie
-  "NE", // Niger
-  "NG", // Nigeria
-  "RW", // Rwanda
-  "ST", // Sao Tomé-et-Principe
-  "SN", // Sénégal
-  "SC", // Seychelles
-  "SL", // Sierra Leone
-  "SO", // Somalie
-  "ZA", // Afrique du Sud
-  "SS", // Soudan du Sud
-  "SD", // Soudan
-  "TZ", // Tanzanie
-  "TG", // Togo
-  "TN", // Tunisie
-  "UG", // Ouganda
-  "ZM", // Zambie
-  "ZW", // Zimbabwe
+  "DZ",
+  "AO",
+  "BJ",
+  "BW",
+  "BF",
+  "BI",
+  "CM",
+  "CV",
+  "CF",
+  "TD",
+  "KM",
+  "CG",
+  "CD",
+  "CI",
+  "DJ",
+  "EG",
+  "GQ",
+  "ER",
+  "SZ",
+  "ET",
+  "GA",
+  "GM",
+  "GH",
+  "GN",
+  "GW",
+  "KE",
+  "LS",
+  "LR",
+  "LY",
+  "MG",
+  "MW",
+  "ML",
+  "MR",
+  "MU",
+  "MA",
+  "MZ",
+  "NA",
+  "NE",
+  "NG",
+  "RW",
+  "ST",
+  "SN",
+  "SC",
+  "SL",
+  "SO",
+  "ZA",
+  "SS",
+  "SD",
+  "TZ",
+  "TG",
+  "TN",
+  "UG",
+  "ZM",
+  "ZW",
 ];
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { zone } = body; // On reçoit 'africa' ou 'world' depuis le site
+    const { zone } = body;
 
     // 1. Auth Check
     const supabase = await createClient();
@@ -87,14 +87,12 @@ export async function POST(request: Request) {
 
     // 2. Configuration selon la zone
     let priceId = PRICES.world;
-    // On type correctement la variable pour éviter l'erreur TypeScript
     let allowedCountries:
       | Stripe.Checkout.SessionCreateParams.ShippingAddressCollection.AllowedCountry[]
       | undefined = undefined;
 
     if (zone === "africa") {
       priceId = PRICES.africa;
-      // 🔒 SÉCURITÉ : On force Stripe à n'accepter que des adresses africaines
       allowedCountries =
         AFRICA_COUNTRIES as Stripe.Checkout.SessionCreateParams.ShippingAddressCollection.AllowedCountry[];
     }
@@ -110,23 +108,21 @@ export async function POST(request: Request) {
           quantity: 1,
         },
       ],
-      // Essai gratuit 14 jours
-      subscription_data: {
-        trial_period_days: 60,
-      },
-      // Configuration de l'adresse de facturation
+
+      // ❌ ON A SUPPRIMÉ LA LIGNE 'subscription_data' avec 'trial_period_days'
+      // Le client paie donc IMMÉDIATEMENT.
+
       billing_address_collection: "required",
       shipping_address_collection:
         zone === "africa"
           ? {
-              allowed_countries: allowedCountries!, // Restriction active
+              allowed_countries: allowedCountries!,
             }
           : undefined,
 
-      // Métadonnées pour le futur Webhook
       metadata: {
         userId: user.id,
-        planName: "premium", // Tout le monde est "premium" maintenant
+        planName: "premium",
         zone: zone,
       },
 
@@ -137,7 +133,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ url: session.url });
   } catch (error: unknown) {
-    // ✅ Correction : 'unknown' au lieu de 'any'
     console.error("[STRIPE ERROR]", error);
 
     let errorMessage = "Erreur lors de l'initialisation du paiement.";

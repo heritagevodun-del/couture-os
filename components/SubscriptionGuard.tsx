@@ -1,46 +1,76 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/utils/supabase/server";
-import { ReactNode } from "react";
+"use client";
 
-interface SubscriptionGuardProps {
-  children: ReactNode;
-}
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
+import { Loader2 } from "lucide-react";
 
-export default async function SubscriptionGuard({
+export default function SubscriptionGuard({
   children,
-}: SubscriptionGuardProps) {
-  const supabase = await createClient();
+}: {
+  children: React.ReactNode;
+}) {
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const supabase = createClient();
 
-  // 1. Récupérer l'utilisateur
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  useEffect(() => {
+    const checkAccess = async () => {
+      // 1. Vérification connexion
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect("/login");
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      // 2. Récupération profil
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("subscription_tier, subscription_status, created_at")
+        .eq("id", user.id)
+        .single();
+
+      // 3. Calculs
+      const subscriptionStatus = profile?.subscription_status || "free";
+      const createdAt = new Date(profile?.created_at || new Date());
+      const now = new Date();
+
+      const diffTime = Math.abs(now.getTime() - createdAt.getTime());
+      const daysUsed = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      const TRIAL_LIMIT = 60; // ⚠️ Limite à 60 jours
+
+      // --- DÉCISION ---
+
+      // CAS 1 : Client PAYANT (Pro) -> OK
+      if (subscriptionStatus === "active" || subscriptionStatus === "pro") {
+        setLoading(false);
+        return;
+      }
+
+      // CAS 2 : Essai TERMINÉ -> DEHORS
+      if (daysUsed > TRIAL_LIMIT) {
+        router.push("/subscription-expired"); // 👈 Redirection correcte
+        return;
+      }
+
+      // CAS 3 : En essai -> OK
+      setLoading(false);
+    };
+
+    checkAccess();
+  }, [router, supabase]);
+
+  if (loading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-white dark:bg-black">
+        <Loader2 className="animate-spin text-[#D4AF37]" size={40} />
+      </div>
+    );
   }
 
-  // 2. Récupérer son statut d'abonnement
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("subscription_status")
-    .eq("id", user.id)
-    .single();
-
-  const status = profile?.subscription_status;
-
-  // 3. LA LISTE DES ÉLUS (Ceux qui ont le droit d'entrer)
-  // 'trialing' = Essai gratuit en cours
-  // 'active' = Paiement OK
-  const allowedStatuses = ["trialing", "active"];
-
-  // 4. LE VERDICT
-  if (!status || !allowedStatuses.includes(status)) {
-    // Si le statut n'est pas bon (ex: 'past_due' car paiement échoué, ou 'canceled')
-    // On le redirige de force vers une page qui lui dit "C'est fini, faut payer"
-    redirect("/subscription-expired");
-  }
-
-  // Si tout est bon, on affiche l'application
   return <>{children}</>;
 }

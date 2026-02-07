@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import Logo from "@/components/Logo";
-import { ArrowRight, Scissors, ShieldCheck, Zap } from "lucide-react";
+import {
+  ArrowRight,
+  Scissors,
+  ShieldCheck,
+  Zap,
+  CreditCard,
+} from "lucide-react";
 
 export default function LandingPage() {
   return (
@@ -16,7 +22,7 @@ export default function LandingPage() {
             <span className="font-bold text-xl tracking-tight">CoutureOS</span>
           </div>
 
-          {/* Boutons (Nettoyé) */}
+          {/* Boutons */}
           <div className="flex items-center gap-4">
             <Link
               href="/login"
@@ -25,10 +31,10 @@ export default function LandingPage() {
               Connexion
             </Link>
             <Link
-              href="/pricing"
+              href="/login" // 👈 STRATÉGIE : On envoie tout le monde vers la création de compte d'abord
               className="bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-full text-sm font-bold hover:bg-gray-800 dark:hover:bg-gray-200 transition"
             >
-              Voir les offres
+              Essai Gratuit
             </Link>
           </div>
         </div>
@@ -54,25 +60,33 @@ export default function LandingPage() {
 
           <p className="text-lg text-gray-500 dark:text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed">
             Fini les carnets perdus. Centralisez vos clients, mesures et
-            commandes dans une application sécurisée, conçue pour les couturiers
-            exigeants.
+            commandes dans une application sécurisée.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            {/* Redirection vers Pricing car l'offre gratuite n'existe plus */}
-            <Link
-              href="/login"
-              className="w-full sm:w-auto px-8 py-4 bg-black dark:bg-white text-white dark:text-black rounded-full font-bold text-lg hover:scale-105 transition-transform flex items-center justify-center gap-2 shadow-xl shadow-gray-200 dark:shadow-none"
-            >
-              Commencer maintenant (60j offerts) <ArrowRight size={20} />
-            </Link>
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full">
+              {/* BOUTON PRINCIPAL - FLUX D'INSCRIPTION */}
+              <Link
+                href="/login"
+                className="w-full sm:w-auto px-8 py-4 bg-black dark:bg-white text-white dark:text-black rounded-full font-bold text-lg hover:scale-105 transition-transform flex items-center justify-center gap-2 shadow-xl shadow-gray-200 dark:shadow-none"
+              >
+                Commencer gratuitement <ArrowRight size={20} />
+              </Link>
 
-            <Link
-              href="/pricing"
-              className="w-full sm:w-auto px-8 py-4 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 rounded-full font-bold text-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition border border-gray-200 dark:border-gray-800"
-            >
-              Voir les tarifs
-            </Link>
+              {/* BOUTON SECONDAIRE - PRIX */}
+              <Link
+                href="/pricing"
+                className="w-full sm:w-auto px-8 py-4 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 rounded-full font-bold text-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition border border-gray-200 dark:border-gray-800"
+              >
+                Voir les tarifs
+              </Link>
+            </div>
+
+            {/* RASSURANCE PLG */}
+            <p className="text-xs text-gray-400 flex items-center gap-1">
+              <CreditCard size={12} /> Aucune carte bancaire requise pour
+              l&apos;essai de 60 jours.
+            </p>
           </div>
 
           <div className="mt-12 text-sm text-gray-400 font-medium">
@@ -96,8 +110,7 @@ export default function LandingPage() {
               <h3 className="text-xl font-bold mb-3">Mesures Digitales</h3>
               <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
                 Enregistrez les mesures une seule fois. Retrouvez-les
-                instantanément pour chaque nouvelle commande, sur mobile ou
-                ordinateur.
+                instantanément pour chaque nouvelle commande.
               </p>
             </div>
 
@@ -109,7 +122,7 @@ export default function LandingPage() {
               <h3 className="text-xl font-bold mb-3">Factures en 1 Clic</h3>
               <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
                 Générez des factures professionnelles PDF automatiquement.
-                Envoyez-les par WhatsApp à vos clients sans effort.
+                Envoyez-les par WhatsApp sans effort.
               </p>
             </div>
 
@@ -121,8 +134,7 @@ export default function LandingPage() {
               <h3 className="text-xl font-bold mb-3">100% Sécurisé</h3>
               <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
                 Vos données sont cryptées. Ne perdez plus jamais le numéro
-                d&apos;un client important ou l&apos;historique de ses
-                paiements.
+                d&apos;un client important.
               </p>
             </div>
           </div>
