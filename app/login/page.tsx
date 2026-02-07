@@ -336,7 +336,7 @@ function LoginForm() {
               ) : isLogin ? (
                 "Se connecter"
               ) : (
-                "Suivant : Choisir mon offre"
+                "Créer un compte"
               )}
             </button>
           </form>
