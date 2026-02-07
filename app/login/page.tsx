@@ -1,10 +1,10 @@
 "use client";
 
-import { supabase } from "../lib/supabase";
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Session } from "@supabase/supabase-js";
-import Logo from "@/components/Logo"; // On utilise ton nouveau logo !
+import { createClient } from "@/utils/supabase/client";
+import { Session, AuthChangeEvent } from "@supabase/supabase-js";
+import Logo from "@/components/Logo";
 import {
   Mail,
   Lock,
@@ -16,110 +16,130 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
-// Sous-composant pour gérer les paramètres d'URL (obligatoire Next.js)
+// --- SOUS-COMPOSANT LOGIQUE ---
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [session, setSession] = useState<Session | null>(null);
+  const supabase = createClient();
 
-  // --- ÉTATS DU FORMULAIRE ---
+  // --- ÉTATS ---
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // --- CHAMPS ---
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  // --- ÉTATS D'ERREURS & SUCCÈS ---
+  // --- FEEDBACK ---
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [globalError, setGlobalError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  // --- 0. GESTION DES ERREURS URL (Retour du callback) ---
+  // 1. GESTION ERREURS URL
   useEffect(() => {
     const error = searchParams.get("error");
     if (error === "auth-code-error") {
-      setGlobalError(
-        "Le lien de connexion est invalide ou a expiré. Veuillez réessayer.",
-      );
+      setGlobalError("Le lien de connexion est invalide ou a expiré.");
     }
   }, [searchParams]);
 
-  // --- 1. GESTION SESSION ---
+  // 2. SURVEILLANCE SESSION & REDIRECTION INTELLIGENTE
   useEffect(() => {
-    // Vérifier si déjà connecté
+    // Vérification initiale
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) router.push("/dashboard"); // CORRECTION : Vers le Dashboard !
     });
 
-    // Écouter les changements (ex: après clic email)
+    // Écouteur de changements (Login, Inscription, Logout)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) router.push("/dashboard"); // CORRECTION : Vers le Dashboard !
-    });
+    } = supabase.auth.onAuthStateChange(
+      async (_event: AuthChangeEvent, session: Session | null) => {
+        setSession(session);
+
+        if (session) {
+          // 🕵️‍♂️ VÉRIFICATION DU STATUT D'ABONNEMENT
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("subscription_status")
+            .eq("id", session.user.id)
+            .single();
+
+          // Si abonnement actif ou en période d'essai -> Dashboard
+          if (
+            profile?.subscription_status === "active" ||
+            profile?.subscription_status === "trialing"
+          ) {
+            router.push("/dashboard");
+          } else {
+            // Sinon (Nouveau compte ou expiré) -> Direction Paiement
+            router.push("/pricing");
+          }
+          router.refresh();
+        }
+      },
+    );
 
     return () => subscription.unsubscribe();
-  }, [router]);
+  }, [router, supabase]);
 
-  // --- 2. VALIDATION EMAIL ---
+  // 3. VALIDATION EMAIL
   const validateEmail = (email: string) => {
-    const re = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
-    return re.test(String(email).toLowerCase());
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
-  // --- 3. LOGIQUE MOT DE PASSE OUBLIÉ ---
+  // 4. RESET PASSWORD
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setGlobalError("");
-    setEmailError("");
     setSuccessMessage("");
 
     if (!validateEmail(email)) {
-      setEmailError("L'adresse email semble incorrecte.");
+      setEmailError("Email invalide.");
       return;
     }
 
     setLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/callback?next=/settings`,
+        redirectTo: `${window.location.origin}/auth/callback?next=/settings/password`,
       });
       if (error) throw error;
-      setSuccessMessage("Email envoyé ! Vérifiez votre boîte de réception.");
+      setSuccessMessage("Lien envoyé ! Vérifiez vos emails.");
     } catch (error: unknown) {
-      let errorMessage = "Erreur lors de l'envoi.";
-      if (error instanceof Error) errorMessage = error.message;
-      setGlobalError(errorMessage);
+      // ✅ Correction : on utilise unknown au lieu de any
+      let message = "Erreur lors de l'envoi.";
+      if (error instanceof Error) {
+        message = error.message;
+      }
+      setGlobalError(message);
     } finally {
       setLoading(false);
     }
   };
 
-  // --- 4. LOGIQUE CONNEXION / INSCRIPTION ---
+  // 5. LOGIN / SIGNUP
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    setGlobalError("");
     setEmailError("");
     setPasswordError("");
-    setGlobalError("");
-    setSuccessMessage("");
 
-    // A. Validation
     if (!validateEmail(email)) {
-      setEmailError("L'adresse email semble incorrecte.");
+      setEmailError("Email incorrect.");
       return;
     }
     if (password.length < 6) {
-      setPasswordError("Le mot de passe doit faire au moins 6 caractères.");
+      setPasswordError("6 caractères minimum.");
       return;
     }
     if (!isLogin && password !== confirmPassword) {
-      setPasswordError("Les mots de passe ne correspondent pas.");
+      setPasswordError("Mots de passe différents.");
       return;
     }
 
@@ -127,48 +147,43 @@ function LoginForm() {
 
     try {
       if (isLogin) {
-        // --- CONNEXION ---
+        // CONNEXION
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
-        // La redirection est gérée par le useEffect (onAuthStateChange)
       } else {
-        // --- INSCRIPTION ---
-        // Important : On redirige vers le callback pour valider l'email
+        // INSCRIPTION
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             emailRedirectTo: `${window.location.origin}/auth/callback`,
+            data: {
+              full_name: email.split("@")[0],
+            },
           },
         });
         if (error) throw error;
 
-        setSuccessMessage(
-          "Compte créé avec succès ! Vérifiez vos emails pour confirmer l'inscription avant de vous connecter.",
-        );
-        setIsLogin(true); // On bascule sur l'écran de connexion
+        setSuccessMessage("Compte créé ! Vérifiez vos emails.");
+        setIsLogin(true);
       }
     } catch (error: unknown) {
-      let errorMessage = "Une erreur est survenue.";
+      // ✅ Correction : on utilise unknown + Type Guard
+      let msg = "Une erreur est survenue.";
+
       if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (
-        typeof error === "object" &&
-        error !== null &&
-        "message" in error
-      ) {
-        errorMessage = String((error as { message: unknown }).message);
+        msg = error.message;
+      } else if (typeof error === "string") {
+        msg = error;
       }
 
-      if (errorMessage.includes("Invalid login credentials"))
-        errorMessage = "Email ou mot de passe incorrect.";
-      if (errorMessage.includes("User already registered"))
-        errorMessage = "Cet email est déjà utilisé.";
-
-      setGlobalError(errorMessage);
+      if (msg.includes("Invalid login credentials"))
+        msg = "Email ou mot de passe incorrect.";
+      if (msg.includes("User already registered")) msg = "Email déjà utilisé.";
+      setGlobalError(msg);
     } finally {
       setLoading(false);
     }
@@ -177,159 +192,116 @@ function LoginForm() {
   if (session) return null;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950 p-6 transition-colors duration-300">
-      <div className="max-w-md w-full bg-white dark:bg-neutral-900 p-10 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800">
-        {/* --- LOGO OFFICIEL --- */}
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950 p-4 sm:p-6 transition-colors duration-300 font-sans">
+      <div className="max-w-md w-full bg-white dark:bg-neutral-900 p-8 sm:p-10 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-800">
         <div className="flex justify-center mb-8">
-          <Logo className="w-20 h-20 shadow-lg rounded-full" />
+          <Logo className="w-16 h-16 sm:w-20 sm:h-20 shadow-lg rounded-2xl" />
         </div>
 
-        {/* --- TITRE --- */}
-        <h2 className="text-center text-3xl font-bold text-gray-900 dark:text-white mb-2 tracking-tight">
+        <h2 className="text-center text-3xl font-bold text-gray-900 dark:text-white mb-3 tracking-tight">
           {isForgotPassword
             ? "Mot de passe oublié ?"
             : isLogin
-              ? "Bon retour parmi nous"
+              ? "Bon retour"
               : "Créer votre atelier"}
         </h2>
-        <p className="text-center text-gray-500 dark:text-gray-400 mb-10 text-sm">
-          {isForgotPassword
-            ? "Nous vous enverrons un lien de récupération."
-            : isLogin
-              ? "Connectez-vous pour gérer vos commandes."
-              : "Rejoignez la révolution de la couture digitale."}
-        </p>
 
-        {/* --- MESSAGES --- */}
         {globalError && (
-          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl flex items-center gap-3 border border-red-100 dark:border-red-900 animate-in fade-in slide-in-from-top-2">
-            <AlertCircle size={18} className="shrink-0" />
-            {globalError}
-          </div>
-        )}
-        {successMessage && (
-          <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm rounded-xl border border-green-200 dark:border-green-900 text-center animate-in fade-in slide-in-from-top-2 flex flex-col items-center gap-2">
-            <CheckCircle2 size={24} />
-            {successMessage}
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl flex items-center gap-3 border border-red-100 dark:border-red-900">
+            <AlertCircle size={18} /> {globalError}
           </div>
         )}
 
-        {/* --- FORMULAIRE --- */}
+        {successMessage && (
+          <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm rounded-xl border border-green-200 dark:border-green-900 flex items-center gap-2 justify-center">
+            <CheckCircle2 size={18} /> {successMessage}
+          </div>
+        )}
+
         {isForgotPassword ? (
-          <form onSubmit={handleResetPassword} className="space-y-6">
+          <form onSubmit={handleResetPassword} className="space-y-5">
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              <label className="text-xs font-bold text-gray-500 uppercase ml-1">
                 Email
               </label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type="email"
-                  placeholder="exemple@atelier.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all placeholder:text-gray-400 text-gray-900 dark:text-white font-medium"
+                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all"
+                  placeholder="email@exemple.com"
                   required
                 />
               </div>
-              {emailError && (
-                <p className="text-xs text-red-500 font-medium">{emailError}</p>
-              )}
             </div>
-
             <button
-              type="submit"
               disabled={loading}
-              className="w-full bg-black dark:bg-white text-white dark:text-black py-4 rounded-xl font-bold hover:bg-gray-900 dark:hover:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg"
+              className="w-full bg-black dark:bg-white text-white dark:text-black py-4 rounded-xl font-bold flex justify-center gap-2 hover:opacity-90 transition-all"
             >
-              {loading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                "Envoyer le lien"
-              )}
+              {loading ? <Loader2 className="animate-spin" /> : "Envoyer"}
             </button>
-
             <button
               type="button"
-              onClick={() => {
-                setIsForgotPassword(false);
-                setGlobalError("");
-                setSuccessMessage("");
-              }}
-              className="w-full text-sm text-gray-500 hover:text-black dark:hover:text-white mt-4 flex items-center justify-center gap-2 transition-colors font-medium"
+              onClick={() => setIsForgotPassword(false)}
+              className="w-full text-sm text-gray-500 hover:text-black mt-2 flex justify-center gap-2 items-center"
             >
-              <ArrowLeft size={16} /> Retour à la connexion
+              <ArrowLeft size={16} /> Retour
             </button>
           </form>
         ) : (
-          <form onSubmit={handleAuth} className="space-y-6">
+          <form onSubmit={handleAuth} className="space-y-5">
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                Adresse Email
+              <label className="text-xs font-bold text-gray-500 uppercase ml-1">
+                Email
               </label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type="email"
-                  placeholder="exemple@atelier.com"
                   value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    setEmailError("");
-                  }}
-                  className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-800 border rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all placeholder:text-gray-400 text-gray-900 dark:text-white font-medium ${
-                    emailError
-                      ? "border-red-500 bg-red-50 dark:bg-red-900/10"
-                      : "border-gray-200 dark:border-gray-700"
-                  }`}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-800 border rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all ${emailError ? "border-red-500" : "border-gray-200 dark:border-gray-700"}`}
+                  placeholder="email@exemple.com"
                   required
                 />
               </div>
               {emailError && (
-                <p className="text-xs text-red-500 font-medium">{emailError}</p>
+                <p className="text-xs text-red-500 ml-1">{emailError}</p>
               )}
             </div>
 
             <div className="space-y-1.5">
-              <div className="flex justify-between items-center">
-                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              <div className="flex justify-between ml-1">
+                <label className="text-xs font-bold text-gray-500 uppercase">
                   Mot de passe
                 </label>
                 {isLogin && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsForgotPassword(true);
-                      setGlobalError("");
-                    }}
-                    className="text-xs font-bold text-black dark:text-white hover:underline transition-all"
+                    onClick={() => setIsForgotPassword(true)}
+                    className="text-xs font-bold hover:underline"
                   >
                     Oublié ?
                   </button>
                 )}
               </div>
-
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
                   value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setPasswordError("");
-                  }}
-                  className={`w-full pl-12 pr-12 py-3.5 bg-gray-50 dark:bg-gray-800 border rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all placeholder:text-gray-400 text-gray-900 dark:text-white font-medium ${
-                    passwordError
-                      ? "border-red-500 bg-red-50 dark:bg-red-900/10"
-                      : "border-gray-200 dark:border-gray-700"
-                  }`}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={`w-full pl-12 pr-12 py-3.5 bg-gray-50 dark:bg-gray-800 border rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all ${passwordError ? "border-red-500" : "border-gray-200 dark:border-gray-700"}`}
+                  placeholder="••••••••"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black dark:hover:text-white transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black"
+                  aria-label={showPassword ? "Masquer" : "Afficher"}
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
@@ -338,43 +310,33 @@ function LoginForm() {
 
             {!isLogin && (
               <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
-                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                  Confirmer le mot de passe
+                <label className="text-xs font-bold text-gray-500 uppercase ml-1">
+                  Confirmation
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                   <input
                     type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-800 border rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all placeholder:text-gray-400 text-gray-900 dark:text-white font-medium ${
-                      passwordError
-                        ? "border-red-500 bg-red-50 dark:bg-red-900/10"
-                        : "border-gray-200 dark:border-gray-700"
-                    }`}
+                    className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-800 border rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all ${passwordError ? "border-red-500" : "border-gray-200 dark:border-gray-700"}`}
+                    placeholder="••••••••"
                     required
                   />
                 </div>
-                {passwordError && (
-                  <p className="text-xs text-red-500 font-medium">
-                    {passwordError}
-                  </p>
-                )}
               </div>
             )}
 
             <button
-              type="submit"
               disabled={loading}
-              className="w-full bg-black dark:bg-white text-white dark:text-black py-4 rounded-xl font-bold hover:bg-gray-900 dark:hover:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg mt-4"
+              className="w-full bg-black dark:bg-white text-white dark:text-black py-4 rounded-xl font-bold flex justify-center gap-2 hover:opacity-90 transition-all mt-6 shadow-lg"
             >
               {loading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : isLogin ? (
                 "Se connecter"
               ) : (
-                "Commencer l'aventure"
+                "Suivant : Choisir mon offre"
               )}
             </button>
           </form>
@@ -382,19 +344,14 @@ function LoginForm() {
 
         {!isForgotPassword && (
           <div className="mt-8 text-center pt-6 border-t border-gray-100 dark:border-gray-800">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+            <p className="text-sm text-gray-500 mb-2">
               {isLogin ? "Nouveau ici ?" : "Déjà un compte ?"}
             </p>
             <button
-              onClick={() => {
-                setIsLogin(!isLogin);
-                setGlobalError("");
-                setEmailError("");
-                setPasswordError("");
-              }}
-              className="text-black dark:text-white font-bold hover:underline transition-all"
+              onClick={() => setIsLogin(!isLogin)}
+              className="font-bold hover:underline transition-all"
             >
-              {isLogin ? "Créer un compte gratuitement" : "Se connecter"}
+              {isLogin ? "Créer un compte" : "Se connecter"}
             </button>
           </div>
         )}
@@ -403,13 +360,12 @@ function LoginForm() {
   );
 }
 
-// Composant Principal avec Suspense (Requis pour useSearchParams dans Next.js)
 export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center">
-          <Loader2 className="animate-spin" />
+        <div className="min-h-screen flex items-center justify-center bg-neutral-950">
+          <Loader2 className="text-white animate-spin" />
         </div>
       }
     >
