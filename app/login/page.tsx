@@ -40,22 +40,29 @@ function LoginForm() {
   const [globalError, setGlobalError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  // 1. GESTION ERREURS URL
+  // 1. GESTION MESSAGES URL (UX Scanner Email)
   useEffect(() => {
     const error = searchParams.get("error");
+    const message = searchParams.get("message");
+
     if (error === "auth-code-error") {
+      // Ancien comportement (Rouge) - On le garde au cas où
       setGlobalError("Le lien de connexion est invalide ou a expiré.");
+    }
+
+    if (message === "email-verified") {
+      // Nouveau comportement (Vert/Bleu) - Rassurant
+      setSuccessMessage("Vérification terminée. Vous pouvez vous connecter.");
+      setIsLogin(true); // On force l'affichage du login
     }
   }, [searchParams]);
 
   // 2. SURVEILLANCE SESSION & REDIRECTION INTELLIGENTE
   useEffect(() => {
-    // Vérification initiale
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
 
-    // Écouteur de changements (Login, Inscription, Logout)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(
@@ -63,21 +70,19 @@ function LoginForm() {
         setSession(session);
 
         if (session) {
-          // 🕵️‍♂️ VÉRIFICATION DU STATUT D'ABONNEMENT
           const { data: profile } = await supabase
             .from("profiles")
             .select("subscription_status")
             .eq("id", session.user.id)
             .single();
 
-          // Si abonnement actif ou en période d'essai -> Dashboard
           if (
             profile?.subscription_status === "active" ||
-            profile?.subscription_status === "trialing"
+            profile?.subscription_status === "trialing" ||
+            profile?.subscription_status === "pro" // Au cas où
           ) {
             router.push("/dashboard");
           } else {
-            // Sinon (Nouveau compte ou expiré) -> Direction Paiement
             router.push("/pricing");
           }
           router.refresh();
@@ -112,7 +117,6 @@ function LoginForm() {
       if (error) throw error;
       setSuccessMessage("Lien envoyé ! Vérifiez vos emails.");
     } catch (error: unknown) {
-      // ✅ Correction : on utilise unknown au lieu de any
       let message = "Erreur lors de l'envoi.";
       if (error instanceof Error) {
         message = error.message;
@@ -159,6 +163,7 @@ function LoginForm() {
           email,
           password,
           options: {
+            // Important : L'URL de redirection doit être celle du callback
             emailRedirectTo: `${window.location.origin}/auth/callback`,
             data: {
               full_name: email.split("@")[0],
@@ -167,11 +172,10 @@ function LoginForm() {
         });
         if (error) throw error;
 
-        setSuccessMessage("Compte créé ! Vérifiez vos emails.");
+        setSuccessMessage("Compte créé ! Vérifiez vos emails pour confirmer.");
         setIsLogin(true);
       }
     } catch (error: unknown) {
-      // ✅ Correction : on utilise unknown + Type Guard
       let msg = "Une erreur est survenue.";
 
       if (error instanceof Error) {
@@ -183,6 +187,7 @@ function LoginForm() {
       if (msg.includes("Invalid login credentials"))
         msg = "Email ou mot de passe incorrect.";
       if (msg.includes("User already registered")) msg = "Email déjà utilisé.";
+
       setGlobalError(msg);
     } finally {
       setLoading(false);
@@ -206,14 +211,16 @@ function LoginForm() {
               : "Créer votre atelier"}
         </h2>
 
+        {/* Message d'erreur global */}
         {globalError && (
-          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl flex items-center gap-3 border border-red-100 dark:border-red-900">
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl flex items-center gap-3 border border-red-100 dark:border-red-900 animate-in slide-in-from-top-2">
             <AlertCircle size={18} /> {globalError}
           </div>
         )}
 
+        {/* Message de succès (Email vérifié ou lien envoyé) */}
         {successMessage && (
-          <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm rounded-xl border border-green-200 dark:border-green-900 flex items-center gap-2 justify-center">
+          <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm rounded-xl border border-green-200 dark:border-green-900 flex items-center gap-2 justify-center animate-in slide-in-from-top-2">
             <CheckCircle2 size={18} /> {successMessage}
           </div>
         )}
