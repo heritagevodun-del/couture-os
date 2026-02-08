@@ -37,14 +37,17 @@ export async function GET(request: NextRequest) {
 
     if (!error) {
       // ✅ SUCCÈS : Redirection vers la destination prévue (ou Dashboard)
+      // On nettoie l'URL pour ne pas traîner le code
       const forwardedUrl = new URL(next, origin);
       return NextResponse.redirect(forwardedUrl);
     }
+
+    // Log serveur pour debugging si besoin
+    console.error("Auth Callback Error:", error.message);
   }
 
-  // 🧠 UX INTELLIGENTE :
-  // Si le code échoue (déjà utilisé par un scanner ou expiré),
-  // on redirige vers le login avec un message neutre/positif pour ne pas effrayer l'utilisateur.
-  // On lui dit "Vérification terminée, connectez-vous".
-  return NextResponse.redirect(`${origin}/login?message=email-verified`);
+  // ⚠️ CAS "LIEN CONSOMMÉ OU EXPIRÉ"
+  // On redirige vers login avec un code d'erreur spécifique 'auth-callback-error'
+  // Le frontend affichera un message jaune "Lien invalide, essayez de vous connecter".
+  return NextResponse.redirect(`${origin}/login?error=auth-callback-error`);
 }

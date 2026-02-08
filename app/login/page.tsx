@@ -14,9 +14,9 @@ import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
+  Info,
 } from "lucide-react";
 
-// --- SOUS-COMPOSANT LOGIQUE ---
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -38,26 +38,28 @@ function LoginForm() {
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [globalError, setGlobalError] = useState("");
+  const [infoMessage, setInfoMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  // 1. GESTION MESSAGES URL (UX Scanner Email)
+  // 1. GESTION MESSAGES URL
   useEffect(() => {
     const error = searchParams.get("error");
     const message = searchParams.get("message");
 
-    if (error === "auth-code-error") {
-      // Ancien comportement (Rouge) - On le garde au cas où
-      setGlobalError("Le lien de connexion est invalide ou a expiré.");
+    if (error === "auth-callback-error" || error === "auth-code-error") {
+      setInfoMessage(
+        "Ce lien n'est plus valide. Connectez-vous simplement ci-dessous.",
+      );
+      setIsLogin(true);
     }
 
     if (message === "email-verified") {
-      // Nouveau comportement (Vert/Bleu) - Rassurant
       setSuccessMessage("Vérification terminée. Vous pouvez vous connecter.");
-      setIsLogin(true); // On force l'affichage du login
+      setIsLogin(true);
     }
   }, [searchParams]);
 
-  // 2. SURVEILLANCE SESSION & REDIRECTION INTELLIGENTE
+  // 2. SURVEILLANCE SESSION
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -68,7 +70,6 @@ function LoginForm() {
     } = supabase.auth.onAuthStateChange(
       async (_event: AuthChangeEvent, session: Session | null) => {
         setSession(session);
-
         if (session) {
           const { data: profile } = await supabase
             .from("profiles")
@@ -79,7 +80,7 @@ function LoginForm() {
           if (
             profile?.subscription_status === "active" ||
             profile?.subscription_status === "trialing" ||
-            profile?.subscription_status === "pro" // Au cas où
+            profile?.subscription_status === "pro"
           ) {
             router.push("/dashboard");
           } else {
@@ -93,22 +94,19 @@ function LoginForm() {
     return () => subscription.unsubscribe();
   }, [router, supabase]);
 
-  // 3. VALIDATION EMAIL
-  const validateEmail = (email: string) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
+  // 3. LOGIQUE MÉTIER
+  const validateEmail = (email: string) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  // 4. RESET PASSWORD
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setGlobalError("");
     setSuccessMessage("");
-
+    setInfoMessage("");
     if (!validateEmail(email)) {
       setEmailError("Email invalide.");
       return;
     }
-
     setLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -118,21 +116,19 @@ function LoginForm() {
       setSuccessMessage("Lien envoyé ! Vérifiez vos emails.");
     } catch (error: unknown) {
       let message = "Erreur lors de l'envoi.";
-      if (error instanceof Error) {
-        message = error.message;
-      }
+      if (error instanceof Error) message = error.message;
       setGlobalError(message);
     } finally {
       setLoading(false);
     }
   };
 
-  // 5. LOGIN / SIGNUP
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setGlobalError("");
     setEmailError("");
     setPasswordError("");
+    setInfoMessage("");
 
     if (!validateEmail(email)) {
       setEmailError("Email incorrect.");
@@ -148,46 +144,35 @@ function LoginForm() {
     }
 
     setLoading(true);
-
     try {
       if (isLogin) {
-        // CONNEXION
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
       } else {
-        // INSCRIPTION
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            // Important : L'URL de redirection doit être celle du callback
             emailRedirectTo: `${window.location.origin}/auth/callback`,
-            data: {
-              full_name: email.split("@")[0],
-            },
+            data: { full_name: email.split("@")[0] },
           },
         });
         if (error) throw error;
-
         setSuccessMessage("Compte créé ! Vérifiez vos emails pour confirmer.");
         setIsLogin(true);
       }
     } catch (error: unknown) {
       let msg = "Une erreur est survenue.";
+      if (error instanceof Error) msg = error.message;
+      else if (typeof error === "string") msg = error;
 
-      if (error instanceof Error) {
-        msg = error.message;
-      } else if (typeof error === "string") {
-        msg = error;
-      }
-
-      if (msg.includes("Invalid login credentials"))
+      if (msg.includes("Invalid login"))
         msg = "Email ou mot de passe incorrect.";
-      if (msg.includes("User already registered")) msg = "Email déjà utilisé.";
-
+      if (msg.includes("User already registered"))
+        msg = "Cet email est déjà utilisé.";
       setGlobalError(msg);
     } finally {
       setLoading(false);
@@ -203,7 +188,7 @@ function LoginForm() {
           <Logo className="w-16 h-16 sm:w-20 sm:h-20 shadow-lg rounded-2xl" />
         </div>
 
-        <h2 className="text-center text-3xl font-bold text-gray-900 dark:text-white mb-3 tracking-tight">
+        <h2 className="text-center text-3xl font-bold text-gray-900 dark:text-white mb-6 tracking-tight">
           {isForgotPassword
             ? "Mot de passe oublié ?"
             : isLogin
@@ -211,122 +196,147 @@ function LoginForm() {
               : "Créer votre atelier"}
         </h2>
 
-        {/* Message d'erreur global */}
+        {/* MESSAGES */}
         {globalError && (
-          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl flex items-center gap-3 border border-red-100 dark:border-red-900 animate-in slide-in-from-top-2">
-            <AlertCircle size={18} /> {globalError}
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl flex items-center gap-3 border border-red-100 dark:border-red-900/50 animate-in slide-in-from-top-2">
+            <AlertCircle size={20} className="shrink-0" /> {globalError}
           </div>
         )}
-
-        {/* Message de succès (Email vérifié ou lien envoyé) */}
+        {infoMessage && (
+          <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 text-sm rounded-xl flex gap-3 border border-yellow-200 dark:border-yellow-900/50 animate-in slide-in-from-top-2">
+            <Info size={20} className="shrink-0" />
+            <span>{infoMessage}</span>
+          </div>
+        )}
         {successMessage && (
-          <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm rounded-xl border border-green-200 dark:border-green-900 flex items-center gap-2 justify-center animate-in slide-in-from-top-2">
-            <CheckCircle2 size={18} /> {successMessage}
+          <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm rounded-xl border border-green-200 dark:border-green-900/50 flex items-center gap-2 justify-center animate-in slide-in-from-top-2">
+            <CheckCircle2 size={20} className="shrink-0" /> {successMessage}
           </div>
         )}
 
+        {/* FORMULAIRE RESET PASSWORD */}
         {isForgotPassword ? (
-          <form onSubmit={handleResetPassword} className="space-y-5">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-500 uppercase ml-1">
+          <form onSubmit={handleResetPassword} className="space-y-4">
+            <div>
+              <label
+                htmlFor="reset-email"
+                className="text-xs font-bold text-gray-500 uppercase ml-1"
+              >
                 Email
               </label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all"
-                  placeholder="email@exemple.com"
-                  required
-                />
-              </div>
+              <input
+                id="reset-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full mt-1 px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none dark:text-white transition-all"
+                required
+              />
             </div>
             <button
               disabled={loading}
-              className="w-full bg-black dark:bg-white text-white dark:text-black py-4 rounded-xl font-bold flex justify-center gap-2 hover:opacity-90 transition-all"
+              className="w-full bg-black dark:bg-white text-white dark:text-black py-4 rounded-xl font-bold hover:opacity-90 transition-all flex justify-center items-center gap-2"
             >
               {loading ? <Loader2 className="animate-spin" /> : "Envoyer"}
             </button>
             <button
               type="button"
               onClick={() => setIsForgotPassword(false)}
-              className="w-full text-sm text-gray-500 hover:text-black mt-2 flex justify-center gap-2 items-center"
+              className="w-full text-sm text-gray-500 hover:text-black dark:hover:text-white mt-2 flex justify-center gap-2 items-center"
             >
               <ArrowLeft size={16} /> Retour
             </button>
           </form>
         ) : (
-          <form onSubmit={handleAuth} className="space-y-5">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-500 uppercase ml-1">
+          /* FORMULAIRE LOGIN / SIGNUP */
+          <form onSubmit={handleAuth} className="space-y-4">
+            <div>
+              <label
+                htmlFor="email"
+                className="text-xs font-bold text-gray-500 uppercase ml-1"
+              >
                 Email
               </label>
-              <div className="relative">
+              <div className="relative mt-1">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
+                  id="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-800 border rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all ${emailError ? "border-red-500" : "border-gray-200 dark:border-gray-700"}`}
-                  placeholder="email@exemple.com"
+                  className={`w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white transition-all ${emailError ? "border-red-500" : "border-gray-200 dark:border-gray-700"}`}
+                  placeholder="nom@exemple.com"
                   required
                 />
               </div>
               {emailError && (
-                <p className="text-xs text-red-500 ml-1">{emailError}</p>
+                <p className="text-xs text-red-500 ml-1 mt-1">{emailError}</p>
               )}
             </div>
 
-            <div className="space-y-1.5">
+            <div>
               <div className="flex justify-between ml-1">
-                <label className="text-xs font-bold text-gray-500 uppercase">
+                {/* 🚨 CORRECTION ICI : className au lieu de class */}
+                <label
+                  htmlFor="password"
+                  className="text-xs font-bold text-gray-500 uppercase"
+                >
                   Mot de passe
                 </label>
                 {isLogin && (
                   <button
                     type="button"
                     onClick={() => setIsForgotPassword(true)}
-                    className="text-xs font-bold hover:underline"
+                    className="text-xs font-bold hover:underline dark:text-gray-400"
                   >
                     Oublié ?
                   </button>
                 )}
               </div>
-              <div className="relative">
+              <div className="relative mt-1">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
+                  id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className={`w-full pl-12 pr-12 py-3.5 bg-gray-50 dark:bg-gray-800 border rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all ${passwordError ? "border-red-500" : "border-gray-200 dark:border-gray-700"}`}
+                  className={`w-full pl-12 pr-12 py-3 bg-gray-50 dark:bg-gray-800 border rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white transition-all ${passwordError ? "border-red-500" : "border-gray-200 dark:border-gray-700"}`}
                   placeholder="••••••••"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black dark:hover:text-white"
                   aria-label={showPassword ? "Masquer" : "Afficher"}
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
+              {passwordError && (
+                <p className="text-xs text-red-500 ml-1 mt-1">
+                  {passwordError}
+                </p>
+              )}
             </div>
 
             {!isLogin && (
-              <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
-                <label className="text-xs font-bold text-gray-500 uppercase ml-1">
+              <div className="animate-in fade-in slide-in-from-top-2">
+                {/* 🚨 CORRECTION ICI : className au lieu de class */}
+                <label
+                  htmlFor="confirmPassword"
+                  className="text-xs font-bold text-gray-500 uppercase ml-1"
+                >
                   Confirmation
                 </label>
-                <div className="relative">
+                <div className="relative mt-1">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                   <input
+                    id="confirmPassword"
                     type={showPassword ? "text" : "password"}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-800 border rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all ${passwordError ? "border-red-500" : "border-gray-200 dark:border-gray-700"}`}
+                    className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white transition-all"
                     placeholder="••••••••"
                     required
                   />
@@ -336,14 +346,14 @@ function LoginForm() {
 
             <button
               disabled={loading}
-              className="w-full bg-black dark:bg-white text-white dark:text-black py-4 rounded-xl font-bold flex justify-center gap-2 hover:opacity-90 transition-all mt-6 shadow-lg"
+              className="w-full bg-black dark:bg-white text-white dark:text-black py-4 rounded-xl font-bold hover:scale-[1.02] transition-transform mt-6 shadow-lg flex justify-center items-center gap-2"
             >
               {loading ? (
                 <Loader2 className="animate-spin" />
               ) : isLogin ? (
                 "Se connecter"
               ) : (
-                "Créer un compte"
+                "Créer mon compte"
               )}
             </button>
           </form>
@@ -352,13 +362,13 @@ function LoginForm() {
         {!isForgotPassword && (
           <div className="mt-8 text-center pt-6 border-t border-gray-100 dark:border-gray-800">
             <p className="text-sm text-gray-500 mb-2">
-              {isLogin ? "Nouveau ici ?" : "Déjà un compte ?"}
+              {isLogin ? "Pas encore de compte ?" : "Déjà un compte ?"}
             </p>
             <button
               onClick={() => setIsLogin(!isLogin)}
-              className="font-bold hover:underline transition-all"
+              className="font-bold hover:underline dark:text-white transition-all"
             >
-              {isLogin ? "Créer un compte" : "Se connecter"}
+              {isLogin ? "Créer un compte gratuitement" : "Se connecter"}
             </button>
           </div>
         )}

@@ -7,7 +7,7 @@
   :root {
     --background: 255 255 255;
     --foreground: 23 23 23; /* Neutral-900 */
-    --gold-primary: #D4AF37; /* Ta couleur signature */
+    --gold-primary: #D4AF37;
   }
 
   .dark {
@@ -23,19 +23,31 @@
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* 🔒 SÉCURITÉ MOBILE */
+    /* SÉCURITÉ MOBILE */
     overflow-x: hidden; 
     width: 100%;
   }
 
   body {
-    /* CORRECTION ICI : On retire <alpha-value> qui causait l'erreur */
     background-color: rgb(var(--background)); 
     color: rgb(var(--foreground));
   }
+
+  /* 🔥 FIX CRITIQUE : LISIBILITÉ DES INPUTS EN DARK MODE
+     Cela force tous les champs de saisie à prendre la couleur du texte
+     au lieu de rester noirs par défaut sur certains navigateurs.
+  */
+  input, textarea, select {
+    @apply text-gray-900 dark:text-white bg-transparent;
+  }
+  
+  /* Couleur du placeholder (texte indicatif) */
+  input::placeholder, textarea::placeholder {
+    @apply text-gray-400;
+  }
 }
 
-/* --- 2. SCROLLBAR LUXE --- */
+/* --- 2. SCROLLBAR LUXE (Desktop) --- */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -77,13 +89,15 @@
 
 /* --- 4. UTILITAIRES --- */
 @layer utilities {
-  /* Cacher la scrollbar proprement */
+  /* Scrollbar Hide : Compatible Firefox (standard) ET Chrome/Safari (webkit)
+     L'avertissement VS Code sur scrollbar-width est normal ici, on gère le fallback juste après.
+  */
   .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;     /* Firefox + Chrome Moderne */
   }
   .scrollbar-hide::-webkit-scrollbar {
-    display: none;
+    display: none;             /* Chrome Ancien, Safari, Opera */
   }
 
   /* Fond Texturé Luxe */
