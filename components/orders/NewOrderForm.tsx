@@ -104,7 +104,6 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
       router.push(`/clients/${clientId}`);
       router.refresh();
     } catch (err: unknown) {
-      // ✅ CORRECTION ICI : Typage sécurisé de l'erreur
       let message = "Une erreur inconnue est survenue";
 
       if (err instanceof Error) {
