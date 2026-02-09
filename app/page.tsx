@@ -22,16 +22,17 @@ export default function LandingPage() {
             <span className="font-bold text-xl tracking-tight">CoutureOS</span>
           </div>
 
-          {/* Boutons */}
+          {/* Boutons Responsives */}
           <div className="flex items-center gap-4">
             <Link
               href="/login"
-              className="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white transition"
+              // CORRECTION : Masqué sur mobile pour éviter le chevauchement
+              className="hidden md:block text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white transition"
             >
               Connexion
             </Link>
             <Link
-              href="/login" // 👈 STRATÉGIE : On envoie tout le monde vers la création de compte d'abord
+              href="/login"
               className="bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-full text-sm font-bold hover:bg-gray-800 dark:hover:bg-gray-200 transition"
             >
               Essai Gratuit
@@ -65,7 +66,7 @@ export default function LandingPage() {
 
           <div className="flex flex-col items-center gap-4">
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full">
-              {/* BOUTON PRINCIPAL - FLUX D'INSCRIPTION */}
+              {/* BOUTON PRINCIPAL */}
               <Link
                 href="/login"
                 className="w-full sm:w-auto px-8 py-4 bg-black dark:bg-white text-white dark:text-black rounded-full font-bold text-lg hover:scale-105 transition-transform flex items-center justify-center gap-2 shadow-xl shadow-gray-200 dark:shadow-none"
@@ -73,7 +74,7 @@ export default function LandingPage() {
                 Commencer gratuitement <ArrowRight size={20} />
               </Link>
 
-              {/* BOUTON SECONDAIRE - PRIX */}
+              {/* BOUTON SECONDAIRE */}
               <Link
                 href="/pricing"
                 className="w-full sm:w-auto px-8 py-4 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 rounded-full font-bold text-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition border border-gray-200 dark:border-gray-800"
@@ -82,7 +83,6 @@ export default function LandingPage() {
               </Link>
             </div>
 
-            {/* RASSURANCE PLG */}
             <p className="text-xs text-gray-400 flex items-center gap-1">
               <CreditCard size={12} /> Aucune carte bancaire requise pour
               l&apos;essai de 60 jours.
@@ -102,7 +102,6 @@ export default function LandingPage() {
       >
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Feature 1 */}
             <div className="bg-white dark:bg-neutral-950 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-[#D4AF37] dark:hover:border-[#D4AF37] transition duration-300 group">
               <div className="w-12 h-12 bg-black dark:bg-white text-white dark:text-black rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <Scissors size={24} />
@@ -114,7 +113,6 @@ export default function LandingPage() {
               </p>
             </div>
 
-            {/* Feature 2 */}
             <div className="bg-white dark:bg-neutral-950 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-[#D4AF37] dark:hover:border-[#D4AF37] transition duration-300 group">
               <div className="w-12 h-12 bg-[#D4AF37] text-white rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <Zap size={24} />
@@ -126,7 +124,6 @@ export default function LandingPage() {
               </p>
             </div>
 
-            {/* Feature 3 */}
             <div className="bg-white dark:bg-neutral-950 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-[#D4AF37] dark:hover:border-[#D4AF37] transition duration-300 group">
               <div className="w-12 h-12 bg-green-600 text-white rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <ShieldCheck size={24} />

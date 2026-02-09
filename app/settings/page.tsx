@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@/utils/supabase/client"; // ✅ Correction Import
+import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -114,11 +114,11 @@ export default function SettingsPage() {
       const fileExt = avatarFile.name.split(".").pop();
       const fileName = `avatar_${user.id}_${Date.now()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage
-        .from("avatars") // Assure-toi que ce bucket existe et est public
+        .from("avatars")
         .upload(fileName, avatarFile, { upsert: true });
 
       if (uploadError) {
-        console.error(uploadError);
+        console.error("Erreur Upload:", uploadError);
         setMessage({
           type: "error",
           text: "Erreur upload image. Vérifiez votre connexion.",
@@ -147,6 +147,7 @@ export default function SettingsPage() {
     setSaving(false);
 
     if (error) {
+      console.error("Erreur Sauvegarde SQL:", error); // 🚨 LOG POUR DEBUG
       setMessage({ type: "error", text: "Erreur lors de la sauvegarde." });
     } else {
       setMessage({ type: "success", text: "Profil mis à jour avec succès !" });

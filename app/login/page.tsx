@@ -22,26 +22,23 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const supabase = createClient();
 
-  // --- ÉTATS ---
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // --- CHAMPS ---
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  // --- FEEDBACK ---
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [globalError, setGlobalError] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  // 1. GESTION MESSAGES URL
+  // Gestion des messages d'URL
   useEffect(() => {
     const error = searchParams.get("error");
     const message = searchParams.get("message");
@@ -59,7 +56,7 @@ function LoginForm() {
     }
   }, [searchParams]);
 
-  // 2. SURVEILLANCE SESSION
+  // Surveillance Session
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -94,7 +91,6 @@ function LoginForm() {
     return () => subscription.unsubscribe();
   }, [router, supabase]);
 
-  // 3. LOGIQUE MÉTIER
   const validateEmail = (email: string) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -196,7 +192,6 @@ function LoginForm() {
               : "Créer votre atelier"}
         </h2>
 
-        {/* MESSAGES */}
         {globalError && (
           <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl flex items-center gap-3 border border-red-100 dark:border-red-900/50 animate-in slide-in-from-top-2">
             <AlertCircle size={20} className="shrink-0" /> {globalError}
@@ -214,7 +209,6 @@ function LoginForm() {
           </div>
         )}
 
-        {/* FORMULAIRE RESET PASSWORD */}
         {isForgotPassword ? (
           <form onSubmit={handleResetPassword} className="space-y-4">
             <div>
@@ -248,7 +242,6 @@ function LoginForm() {
             </button>
           </form>
         ) : (
-          /* FORMULAIRE LOGIN / SIGNUP */
           <form onSubmit={handleAuth} className="space-y-4">
             <div>
               <label
@@ -273,10 +266,8 @@ function LoginForm() {
                 <p className="text-xs text-red-500 ml-1 mt-1">{emailError}</p>
               )}
             </div>
-
             <div>
               <div className="flex justify-between ml-1">
-                {/* 🚨 CORRECTION ICI : className au lieu de class */}
                 <label
                   htmlFor="password"
                   className="text-xs font-bold text-gray-500 uppercase"
@@ -319,10 +310,8 @@ function LoginForm() {
                 </p>
               )}
             </div>
-
             {!isLogin && (
               <div className="animate-in fade-in slide-in-from-top-2">
-                {/* 🚨 CORRECTION ICI : className au lieu de class */}
                 <label
                   htmlFor="confirmPassword"
                   className="text-xs font-bold text-gray-500 uppercase ml-1"
@@ -343,7 +332,6 @@ function LoginForm() {
                 </div>
               </div>
             )}
-
             <button
               disabled={loading}
               className="w-full bg-black dark:bg-white text-white dark:text-black py-4 rounded-xl font-bold hover:scale-[1.02] transition-transform mt-6 shadow-lg flex justify-center items-center gap-2"
@@ -358,7 +346,6 @@ function LoginForm() {
             </button>
           </form>
         )}
-
         {!isForgotPassword && (
           <div className="mt-8 text-center pt-6 border-t border-gray-100 dark:border-gray-800">
             <p className="text-sm text-gray-500 mb-2">

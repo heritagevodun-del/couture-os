@@ -171,7 +171,7 @@ export default function NewClientForm() {
                   type="text"
                   required
                   className="w-full px-3 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none dark:text-white text-base"
-                  placeholder="Ex: Fatou Diop"
+                  placeholder="Ex: Jean DOSSOU"
                   value={formData.full_name}
                   onChange={(e) =>
                     setFormData({ ...formData, full_name: e.target.value })
@@ -185,7 +185,7 @@ export default function NewClientForm() {
                 <input
                   type="tel"
                   className="w-full px-3 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none dark:text-white text-base"
-                  placeholder="Ex: 77 123 45 67"
+                  placeholder="Ex: +229 90 12 34 56"
                   value={formData.phone}
                   onChange={(e) =>
                     setFormData({ ...formData, phone: e.target.value })
@@ -199,7 +199,7 @@ export default function NewClientForm() {
                 <input
                   type="text"
                   className="w-full px-3 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none dark:text-white text-base"
-                  placeholder="Ex: Dakar"
+                  placeholder="Ex: Cotonou"
                   value={formData.city}
                   onChange={(e) =>
                     setFormData({ ...formData, city: e.target.value })
