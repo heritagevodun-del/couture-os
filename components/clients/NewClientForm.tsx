@@ -4,7 +4,6 @@ import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-// Assure-toi que ce chemin correspond bien à ton arborescence
 import { MEASUREMENT_TEMPLATES } from "@/app/constants/measurements";
 import {
   ArrowLeft,
@@ -25,7 +24,6 @@ export default function NewClientForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // --- ÉTATS FORMULAIRE ---
   const [formData, setFormData] = useState({
     full_name: "",
     phone: "",
@@ -33,7 +31,6 @@ export default function NewClientForm() {
     notes: "",
   });
 
-  // --- GESTION DES MESURES ---
   const [selectedTemplateId, setSelectedTemplateId] = useState(
     MEASUREMENT_TEMPLATES[0].id,
   );
@@ -45,7 +42,6 @@ export default function NewClientForm() {
   >([]);
   const [newCustomLabel, setNewCustomLabel] = useState("");
 
-  // LOGIQUE MESURES
   const currentTemplate =
     MEASUREMENT_TEMPLATES.find((t) => t.id === selectedTemplateId) ||
     MEASUREMENT_TEMPLATES[0];
@@ -68,7 +64,6 @@ export default function NewClientForm() {
     setMeasureValues(newValues);
   };
 
-  // --- ENVOI DU FORMULAIRE ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -84,14 +79,15 @@ export default function NewClientForm() {
         return;
       }
 
-      // Préparation du JSON des mesures
+      // ✅ CORRECTION LOGIQUE : Sauvegarde intelligente
+      // On sauvegarde non seulement les valeurs, mais aussi la définition des champs custom
       const measurementsJSON = {
         _template_id: selectedTemplateId,
         _template_name: currentTemplate.label,
+        _custom_fields_def: customFields, // On garde la mémoire des labels ici !
         ...measureValues,
       };
 
-      // On insère
       const { error: dbError } = await supabase.from("clients").insert([
         {
           full_name: formData.full_name,
@@ -108,9 +104,7 @@ export default function NewClientForm() {
       router.push("/clients");
       router.refresh();
     } catch (err: unknown) {
-      // ✅ CORRECTION 1 : Typage sécurisé de l'erreur
       const errorObj = err as { code?: string; message?: string };
-
       if (errorObj.code === "23505") {
         setError("Ce client existe déjà.");
       } else if (errorObj.message?.includes("policy")) {
@@ -125,7 +119,6 @@ export default function NewClientForm() {
 
   return (
     <div className="max-w-4xl mx-auto pb-24">
-      {/* --- HEADER --- */}
       <div className="flex items-center gap-4 mb-6">
         <Link
           href="/clients"
@@ -139,7 +132,6 @@ export default function NewClientForm() {
         </h1>
       </div>
 
-      {/* --- MESSAGE D'ERREUR --- */}
       {error && (
         <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl flex items-center gap-3 text-red-600 dark:text-red-400 animate-in slide-in-from-top-2">
           <AlertCircle size={24} className="flex-shrink-0" />
@@ -150,18 +142,16 @@ export default function NewClientForm() {
         </div>
       )}
 
-      {/* --- FORMULAIRE --- */}
       <form
         onSubmit={handleSubmit}
         className="grid grid-cols-1 lg:grid-cols-3 gap-6"
       >
-        {/* COLONNE GAUCHE : IDENTITÉ (1/3) */}
+        {/* COLONNE GAUCHE : IDENTITÉ */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
             <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-4 flex items-center gap-2">
               <User size={14} /> Identité
             </h2>
-
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
@@ -225,21 +215,18 @@ export default function NewClientForm() {
           </div>
         </div>
 
-        {/* COLONNE DROITE : MESURES INTELLIGENTES (2/3) */}
+        {/* COLONNE DROITE : MESURES */}
         <div className="lg:col-span-2">
           <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 h-full flex flex-col">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
               <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wide flex items-center gap-2">
                 <Ruler size={14} /> Prise de Mesures
               </h2>
-
-              {/* SÉLECTEUR DE GABARIT */}
               <div className="relative w-full sm:w-auto">
                 <select
                   value={selectedTemplateId}
                   onChange={(e) => setSelectedTemplateId(e.target.value)}
-                  // ✅ CORRECTION 2 : Ajout de aria-label pour l'accessibilité
-                  aria-label="Sélectionner un modèle de mesures"
+                  aria-label="Sélectionner un modèle"
                   className="w-full sm:w-auto appearance-none bg-black dark:bg-white text-white dark:text-black font-bold pl-10 pr-10 py-3 rounded-xl text-sm cursor-pointer hover:opacity-90 transition shadow-md"
                 >
                   {MEASUREMENT_TEMPLATES.map((t) => (
@@ -252,7 +239,6 @@ export default function NewClientForm() {
               </div>
             </div>
 
-            {/* GRILLE DES MESURES */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
               {currentTemplate.fields.map((field) => (
                 <div
@@ -284,7 +270,6 @@ export default function NewClientForm() {
               ))}
             </div>
 
-            {/* CHAMPS PERSONNALISÉS */}
             {customFields.length > 0 && (
               <div className="mb-6 animate-in fade-in">
                 <h3 className="text-xs font-bold text-gray-400 uppercase mb-3">
@@ -299,7 +284,6 @@ export default function NewClientForm() {
                       <button
                         type="button"
                         onClick={() => removeCustomField(field.id)}
-                        // ✅ CORRECTION 3 : Ajout de aria-label pour le bouton icône
                         aria-label={`Supprimer ${field.label}`}
                         className="absolute top-1 right-1 text-red-400 hover:text-red-600 md:opacity-0 md:group-hover:opacity-100 transition p-1"
                       >
@@ -327,7 +311,6 @@ export default function NewClientForm() {
               </div>
             )}
 
-            {/* AJOUTER UNE MESURE */}
             <div className="flex items-center gap-2 pt-4 border-t border-gray-100 dark:border-gray-800 mt-auto">
               <div className="relative flex-1">
                 <Plus className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -355,7 +338,6 @@ export default function NewClientForm() {
             </div>
           </div>
 
-          {/* BOUTON SAVE */}
           <div className="mt-6 flex justify-end pb-8 lg:pb-0">
             <button
               type="submit"

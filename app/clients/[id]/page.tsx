@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
-import { createClient } from "@/utils/supabase/client"; // ✅ Correction Import
+import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -19,11 +19,14 @@ import {
   StickyNote,
   Loader2,
   Plus,
+  ChevronDown,
 } from "lucide-react";
 import { generateInvoice } from "../../utils/invoiceGenerator";
 import { MEASUREMENT_TEMPLATES } from "../../constants/measurements";
 
 // --- TYPES ---
+type CustomFieldDef = { id: string; label: string };
+
 type Client = {
   id: string;
   full_name: string;
@@ -58,10 +61,9 @@ export default function ClientDetails({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  // ✅ Next.js 15 : Déballage des params avec use()
   const { id } = use(params);
   const router = useRouter();
-  const supabase = createClient(); // ✅ Client Supabase unique
+  const supabase = createClient();
 
   const [client, setClient] = useState<Client | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -113,18 +115,18 @@ export default function ClientDetails({
         });
       }
 
-      // B. Client (Sécurisé par RLS)
+      // B. Client
       const { data: clientData, error: clientError } = await supabase
         .from("clients")
         .select("*")
         .eq("id", id)
-        .eq("user_id", user.id) // Double sécurité
+        .eq("user_id", user.id)
         .single();
 
       if (clientError || !clientData) {
         console.error("Erreur client:", clientError);
         setLoading(false);
-        return; // Le render affichera "Client introuvable"
+        return;
       }
 
       setClient(clientData);
@@ -158,10 +160,22 @@ export default function ClientDetails({
     MEASUREMENT_TEMPLATES.find((t) => t.id === currentTemplateId) ||
     MEASUREMENT_TEMPLATES[0];
 
+  // ✅ CORRECTION AFFICHAGE CUSTOM
   const getLabelForField = (key: string) => {
-    if (key.startsWith("_")) return null;
+    if (key.startsWith("_") && key !== "_custom_fields_def") return null;
+
+    // 1. Chercher dans le template standard
     const field = currentTemplate.fields.find((f) => f.id === key);
-    return field ? field.label : key.replace(/_/g, " ");
+    if (field) return field.label;
+
+    // 2. Chercher dans les définitions custom enregistrées
+    const customDefs: CustomFieldDef[] =
+      client?.measurements?._custom_fields_def || [];
+    const customField = customDefs.find((f) => f.id === key);
+    if (customField) return customField.label;
+
+    // 3. Fallback
+    return key.replace(/_/g, " ").replace("custom", "Mesure");
   };
 
   // Mise à jour infos client
@@ -209,8 +223,6 @@ export default function ClientDetails({
       return;
 
     setLoading(true);
-
-    // Suppression en cascade manuelle (si la DB ne le fait pas)
     await supabase.from("orders").delete().eq("client_id", client.id);
     const { error } = await supabase
       .from("clients")
@@ -225,13 +237,25 @@ export default function ClientDetails({
     }
   };
 
+  // ✅ Changement de statut de commande
+  const handleUpdateStatus = async (orderId: string, newStatus: string) => {
+    const { error } = await supabase
+      .from("orders")
+      .update({ status: newStatus })
+      .eq("id", orderId);
+
+    if (!error) {
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)),
+      );
+    }
+  };
+
   // Génération Facture
   const handleDownloadInvoice = (e: React.MouseEvent, order: Order) => {
     e.stopPropagation();
     if (!client) return;
 
-    // Calcul simple du numéro de commande client (1, 2, 3...)
-    // Basé sur l'ordre chronologique inverse
     const sortedOrders = [...orders].sort(
       (a, b) =>
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
@@ -290,12 +314,9 @@ export default function ClientDetails({
       msg = `Bonne nouvelle ${client.full_name} ! 🎉 Votre commande "${order.title}" est prête. Reste à payer : ${reste.toLocaleString()} ${devise}. À très vite !`;
     }
 
-    // Ouverture sécurisée
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
     window.open(url, "_blank", "noopener,noreferrer");
   };
-
-  // --- RENDER ---
 
   if (loading)
     return (
@@ -329,16 +350,18 @@ export default function ClientDetails({
           <button
             onClick={() => setIsEditingClient(true)}
             className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-colors"
-            aria-label="Modifier le client"
             title="Modifier"
+            // ✅ FIX A11Y : Label explicite
+            aria-label="Modifier les informations client"
           >
             <Edit2 size={18} />
           </button>
           <button
             onClick={handleDeleteClient}
             className="p-2 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-colors"
-            aria-label="Supprimer le client"
             title="Supprimer"
+            // ✅ FIX A11Y : Label explicite
+            aria-label="Supprimer le client"
           >
             <Trash2 size={18} />
           </button>
@@ -348,7 +371,6 @@ export default function ClientDetails({
       <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
         {/* CARTE IDENTITÉ */}
         <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 flex flex-col items-center text-center relative overflow-hidden">
-          {/* Fond décoratif subtil */}
           <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-gray-50 to-transparent dark:from-gray-800/50 dark:to-transparent -z-0" />
 
           <div className="relative z-10 w-24 h-24 bg-black dark:bg-white text-white dark:text-black rounded-full flex items-center justify-center text-3xl font-bold mb-4 shadow-xl ring-4 ring-white dark:ring-neutral-900">
@@ -431,6 +453,10 @@ export default function ClientDetails({
           <div className="p-6">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {Object.entries(tempMeasurements).map(([key, value]) => {
+                if (key.startsWith("_") && key !== "_custom_fields_def")
+                  return null;
+                if (key === "_custom_fields_def") return null;
+
                 const label = getLabelForField(key);
                 if (!label) return null;
 
@@ -454,6 +480,7 @@ export default function ClientDetails({
                             [key]: e.target.value,
                           }))
                         }
+                        // ✅ FIX A11Y : Label pour l'input
                         aria-label={`Modifier ${label}`}
                       />
                     ) : (
@@ -468,12 +495,6 @@ export default function ClientDetails({
                 );
               })}
             </div>
-            {Object.keys(tempMeasurements).filter((k) => !k.startsWith("_"))
-              .length === 0 && (
-              <p className="text-center text-gray-400 text-sm italic py-4">
-                Aucune mesure enregistrée pour ce modèle.
-              </p>
-            )}
           </div>
         </div>
 
@@ -505,6 +526,7 @@ export default function ClientDetails({
                     key={order.id}
                     className="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-3 transition hover:shadow-md"
                   >
+                    {/* Header Commande */}
                     <div className="flex justify-between items-start">
                       <div>
                         <h3 className="font-bold text-gray-900 dark:text-white text-base">
@@ -524,52 +546,71 @@ export default function ClientDetails({
                             {shopProfile?.currency}
                           </span>
                         </span>
-                        {/* Affiche l'avance ou le reste à payer */}
-                        {order.advance > 0 ? (
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${reste > 0 ? "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400" : "bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400"}`}
-                          >
-                            {reste > 0
-                              ? `Reste: ${reste.toLocaleString()}`
-                              : "Payé ✔"}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-gray-400 px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded-full">
-                            0 avance
-                          </span>
-                        )}
+                        {/* Étiquette Paiement */}
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${reste > 0 ? "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400" : "bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400"}`}
+                        >
+                          {reste > 0
+                            ? `Reste: ${reste.toLocaleString()}`
+                            : "Payé ✔"}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-3 border-t border-gray-50 dark:border-gray-800">
-                      <span
-                        className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wide ${
-                          order.status === "termine"
-                            ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                            : order.status === "en_cours"
-                              ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                              : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
-                        }`}
-                      >
-                        {order.status.replace("_", " ")}
-                      </span>
+                    {/* Footer Actions */}
+                    <div className="flex flex-wrap items-center justify-between pt-3 border-t border-gray-50 dark:border-gray-800 gap-2">
+                      {/* ✅ SÉLECTEUR DE STATUT */}
+                      <div className="relative">
+                        <select
+                          value={order.status}
+                          onChange={(e) =>
+                            handleUpdateStatus(order.id, e.target.value)
+                          }
+                          // ✅ FIX A11Y : Label pour le select
+                          aria-label={`Statut de la commande ${order.title}`}
+                          className={`appearance-none pl-3 pr-8 py-1.5 rounded-lg text-xs font-bold uppercase cursor-pointer border-none outline-none transition-colors ${
+                            order.status === "termine"
+                              ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                              : order.status === "en_cours"
+                                ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                                : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+                          }`}
+                        >
+                          <option value="en_attente">En attente</option>
+                          <option value="en_cours">En cours</option>
+                          <option value="essayage">Essayage</option>
+                          <option value="termine">Terminé</option>
+                        </select>
+                        <ChevronDown
+                          size={12}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-50"
+                        />
+                      </div>
 
                       <div className="flex gap-2">
+                        {/* Bouton Facture */}
                         <button
                           onClick={(e) => handleDownloadInvoice(e, order)}
                           className="p-2 bg-gray-50 dark:bg-gray-800 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition border border-gray-100 dark:border-gray-700"
-                          title="Facture"
+                          title="Facture PDF"
+                          // ✅ FIX A11Y : Label
                           aria-label="Télécharger la facture"
                         >
                           <FileText size={16} />
                         </button>
+
+                        {/* Bouton WhatsApp */}
                         <button
                           onClick={() => sendWhatsApp("ready", order)}
-                          className="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-xl hover:bg-green-100 dark:hover:bg-green-900/40 transition border border-green-100 dark:border-green-900/30"
-                          title="Prévenir client"
-                          aria-label="Envoyer message WhatsApp"
+                          className="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-xl hover:bg-green-100 dark:hover:bg-green-900/40 transition border border-green-100 dark:border-green-900/30 flex items-center gap-1"
+                          title="Envoyer message 'Prêt'"
+                          // ✅ FIX A11Y : Label
+                          aria-label="Envoyer un message WhatsApp"
                         >
                           <CheckCircle2 size={16} />
+                          <span className="text-xs font-bold hidden sm:inline">
+                            Prêt
+                          </span>
                         </button>
                       </div>
                     </div>
@@ -592,17 +633,23 @@ export default function ClientDetails({
               <button
                 onClick={() => setIsEditingClient(false)}
                 className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                aria-label="Fermer"
+                // ✅ FIX A11Y : Label
+                aria-label="Fermer la fenêtre"
               >
                 <X className="dark:text-white" size={24} />
               </button>
             </div>
             <div className="space-y-4">
+              {/* ✅ FIX A11Y : Ajout de ID et HTMLFOR */}
               <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">
+                <label
+                  className="block text-xs font-bold text-gray-500 mb-1 ml-1"
+                  htmlFor="edit-fullname"
+                >
                   Nom complet
                 </label>
                 <input
+                  id="edit-fullname"
                   className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white font-medium"
                   placeholder="Nom complet"
                   value={tempClientData.full_name}
@@ -615,10 +662,14 @@ export default function ClientDetails({
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">
+                <label
+                  className="block text-xs font-bold text-gray-500 mb-1 ml-1"
+                  htmlFor="edit-phone"
+                >
                   Téléphone
                 </label>
                 <input
+                  id="edit-phone"
                   type="tel"
                   className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white font-medium"
                   placeholder="Téléphone"
@@ -632,10 +683,14 @@ export default function ClientDetails({
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">
+                <label
+                  className="block text-xs font-bold text-gray-500 mb-1 ml-1"
+                  htmlFor="edit-city"
+                >
                   Ville
                 </label>
                 <input
+                  id="edit-city"
                   className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white font-medium"
                   placeholder="Ville"
                   value={tempClientData.city}
@@ -648,10 +703,14 @@ export default function ClientDetails({
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">
+                <label
+                  className="block text-xs font-bold text-gray-500 mb-1 ml-1"
+                  htmlFor="edit-notes"
+                >
                   Notes
                 </label>
                 <textarea
+                  id="edit-notes"
                   className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white resize-none dark:text-white font-medium"
                   placeholder="Notes..."
                   rows={3}

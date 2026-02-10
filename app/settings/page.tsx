@@ -29,13 +29,11 @@ export default function SettingsPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-  // Gestion des messages (Feedback)
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
 
-  // Données du formulaire
   const [profile, setProfile] = useState({
     shop_name: "",
     shop_address: "",
@@ -44,18 +42,15 @@ export default function SettingsPage() {
     avatar_url: "",
   });
 
-  // --- 1. CHARGEMENT ---
   useEffect(() => {
     const getProfile = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-
       if (!user) {
         router.push("/login");
         return;
       }
-
       setUserEmail(user.email || "");
 
       const { data, error } = await supabase
@@ -67,8 +62,8 @@ export default function SettingsPage() {
       if (data && !error) {
         setProfile({
           shop_name: data.shop_name || "",
-          shop_address: data.address || "", // Mappage DB
-          shop_phone: data.phone || "", // Mappage DB
+          shop_address: data.address || "",
+          shop_phone: data.phone || "",
           currency: data.currency || "FCFA",
           avatar_url: data.avatar_url || "",
         });
@@ -79,11 +74,9 @@ export default function SettingsPage() {
     getProfile();
   }, [router, supabase]);
 
-  // --- 2. GESTION AVATAR ---
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      // 2 Mo max
       if (file.size > 2 * 1024 * 1024) {
         setMessage({
           type: "error",
@@ -96,7 +89,6 @@ export default function SettingsPage() {
     }
   };
 
-  // --- 3. SAUVEGARDE ---
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -109,7 +101,6 @@ export default function SettingsPage() {
 
     let finalAvatarUrl = profile.avatar_url;
 
-    // A. Upload de la nouvelle image si nécessaire
     if (avatarFile) {
       const fileExt = avatarFile.name.split(".").pop();
       const fileName = `avatar_${user.id}_${Date.now()}.${fileExt}`;
@@ -119,10 +110,7 @@ export default function SettingsPage() {
 
       if (uploadError) {
         console.error("Erreur Upload:", uploadError);
-        setMessage({
-          type: "error",
-          text: "Erreur upload image. Vérifiez votre connexion.",
-        });
+        setMessage({ type: "error", text: "Erreur upload image." });
         setSaving(false);
         return;
       }
@@ -133,7 +121,6 @@ export default function SettingsPage() {
       finalAvatarUrl = publicUrl;
     }
 
-    // B. Mise à jour Profil
     const { error } = await supabase.from("profiles").upsert({
       id: user.id,
       shop_name: profile.shop_name,
@@ -147,49 +134,31 @@ export default function SettingsPage() {
     setSaving(false);
 
     if (error) {
-      console.error("Erreur Sauvegarde SQL:", error); // 🚨 LOG POUR DEBUG
+      console.error("Erreur Sauvegarde SQL:", error);
       setMessage({ type: "error", text: "Erreur lors de la sauvegarde." });
     } else {
       setMessage({ type: "success", text: "Profil mis à jour avec succès !" });
       setProfile((prev) => ({ ...prev, avatar_url: finalAvatarUrl }));
-
-      // Rafraîchir pour mettre à jour le dashboard
-      setTimeout(() => {
-        router.refresh();
-        setMessage(null);
-      }, 2000);
+      router.refresh();
     }
   };
 
-  // --- 4. DÉCONNEXION ---
   const handleLogout = async () => {
     setLoading(true);
     await supabase.auth.signOut();
     router.push("/login");
   };
 
-  // --- 5. SUPPRESSION COMPTE ---
   const handleDeleteAccount = async () => {
-    const confirm = window.confirm(
-      "🛑 Êtes-vous sûr ? Cette action est irréversible.",
-    );
-    if (!confirm) return;
-
-    const confirmText = window.prompt("Écrivez 'SUPPRIMER' pour confirmer :");
-    if (confirmText !== "SUPPRIMER") return;
+    if (!window.confirm("🛑 Êtes-vous sûr ?")) return;
+    if (window.prompt("Écrivez 'SUPPRIMER' :") !== "SUPPRIMER") return;
 
     setLoading(true);
     const {
       data: { user },
     } = await supabase.auth.getUser();
-
     if (user) {
-      // Cascade delete manuelle pour nettoyer proprement
-      await supabase.from("orders").delete().eq("user_id", user.id);
-      await supabase.from("clients").delete().eq("user_id", user.id);
-      await supabase.from("models").delete().eq("user_id", user.id);
       await supabase.from("profiles").delete().eq("id", user.id);
-
       await supabase.auth.signOut();
       router.push("/login");
     }
@@ -205,12 +174,11 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-neutral-950 p-4 md:p-8 transition-colors duration-300">
       <div className="max-w-2xl mx-auto">
-        {/* Navigation */}
         <div className="flex items-center gap-4 mb-8">
           <Link
             href="/dashboard"
             className="p-2 bg-white dark:bg-neutral-900 rounded-full border border-gray-200 dark:border-gray-800 text-gray-500 hover:text-black dark:hover:text-white transition shadow-sm"
-            aria-label="Retour au tableau de bord"
+            aria-label="Retour"
           >
             <ArrowLeft size={20} />
           </Link>
@@ -224,14 +192,9 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Toast Notification */}
         {message && (
           <div
-            className={`mb-6 p-4 rounded-xl flex items-center gap-3 text-sm font-bold shadow-sm animate-in slide-in-from-top-2 ${
-              message.type === "success"
-                ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800"
-                : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800"
-            }`}
+            className={`mb-6 p-4 rounded-xl flex items-center gap-3 text-sm font-bold shadow-sm animate-in slide-in-from-top-2 ${message.type === "success" ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800" : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800"}`}
           >
             {message.type === "success" ? (
               <CheckCircle2 size={18} />
@@ -243,7 +206,6 @@ export default function SettingsPage() {
         )}
 
         <form onSubmit={handleSaveProfile} className="space-y-6">
-          {/* CARTE IDENTITÉ & LOGO */}
           <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 md:p-8">
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-50 dark:border-gray-800">
               <Store className="text-gray-400" size={20} />
@@ -252,7 +214,6 @@ export default function SettingsPage() {
               </h2>
             </div>
 
-            {/* Upload Logo */}
             <div className="flex flex-col items-center mb-8">
               <div className="relative group cursor-pointer">
                 <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-gray-50 dark:border-gray-800 bg-gray-100 dark:bg-gray-800 flex items-center justify-center shadow-inner">
@@ -260,7 +221,7 @@ export default function SettingsPage() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={avatarPreview}
-                      alt="Logo Atelier"
+                      alt="Logo"
                       className="w-full h-full object-cover"
                     />
                   ) : (
@@ -270,10 +231,11 @@ export default function SettingsPage() {
                     />
                   )}
                 </div>
+                {/* CORRECTION : Ajout de aria-label pour l'accessibilité */}
                 <label
                   htmlFor="avatar-upload"
                   className="absolute bottom-0 right-0 p-2 bg-black text-white rounded-full hover:bg-gray-800 cursor-pointer shadow-lg transition-transform hover:scale-110"
-                  aria-label="Changer le logo"
+                  aria-label="Changer la photo de profil"
                 >
                   <Camera size={16} />
                 </label>
@@ -310,7 +272,6 @@ export default function SettingsPage() {
                   }
                 />
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
                   <label
@@ -338,7 +299,7 @@ export default function SettingsPage() {
                     htmlFor="currency"
                     className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase"
                   >
-                    Devise (Monnaie)
+                    Devise
                   </label>
                   <div className="relative">
                     <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -355,20 +316,19 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-
               <div>
                 <label
                   htmlFor="shop_address"
                   className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase"
                 >
-                  Adresse (Pour Facture)
+                  Adresse
                 </label>
                 <div className="relative">
                   <MapPin className="absolute left-3 top-3.5 text-gray-400 h-4 w-4" />
                   <textarea
                     id="shop_address"
                     rows={2}
-                    placeholder="123 Rue du Commerce, Cotonou"
+                    placeholder="123 Rue du Commerce"
                     className="w-full pl-10 pr-3 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none dark:text-white transition-all resize-none"
                     value={profile.shop_address}
                     onChange={(e) =>
@@ -389,16 +349,14 @@ export default function SettingsPage() {
                   <Loader2 className="animate-spin h-5 w-5" />
                 ) : (
                   <Save size={18} />
-                )}
+                )}{" "}
                 {saving ? "Sauvegarde..." : "Enregistrer"}
               </button>
             </div>
           </div>
         </form>
 
-        {/* --- ZONE DANGER & COMPTE --- */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-          {/* Déconnexion */}
           <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 flex flex-col justify-between">
             <div>
               <h3 className="font-bold text-gray-900 dark:text-white mb-1">
@@ -415,15 +373,12 @@ export default function SettingsPage() {
               <LogOut size={16} /> Se déconnecter
             </button>
           </div>
-
-          {/* Suppression */}
           <div className="bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/30 p-6">
             <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-bold mb-2">
               <ShieldAlert size={18} /> Zone de Danger
             </div>
             <p className="text-xs text-red-600 dark:text-red-400/80 mb-6 leading-relaxed">
-              La suppression du compte est définitive. Toutes vos données
-              clients et commandes seront effacées.
+              La suppression du compte est définitive.
             </p>
             <button
               onClick={handleDeleteAccount}
@@ -432,10 +387,6 @@ export default function SettingsPage() {
               <Trash2 size={16} /> Supprimer mon compte
             </button>
           </div>
-        </div>
-
-        <div className="text-center text-xs text-gray-300 dark:text-gray-700 pb-8">
-          CoutureOS Pro v2.1 • ID: {userEmail.split("@")[0]}
         </div>
       </div>
     </div>

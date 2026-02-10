@@ -38,7 +38,6 @@ function LoginForm() {
   const [infoMessage, setInfoMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  // Gestion des messages d'URL
   useEffect(() => {
     const error = searchParams.get("error");
     const message = searchParams.get("message");
@@ -56,7 +55,6 @@ function LoginForm() {
     }
   }, [searchParams]);
 
-  // Surveillance Session
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
