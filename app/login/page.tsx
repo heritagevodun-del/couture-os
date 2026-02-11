@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { Session, AuthChangeEvent } from "@supabase/supabase-js";
 import Logo from "@/components/Logo";
-// ✅ SÉCURITÉ : Import des fonctions de protection
+// ✅ Import des fonctions de sécurité
 import { normalizeEmail, isBlockedEmail } from "@/lib/security";
 import {
   Mail,
@@ -102,16 +102,17 @@ function LoginForm() {
     setSuccessMessage("");
     setInfoMessage("");
 
-    // ✅ SÉCURITÉ : On nettoie l'email avant d'envoyer le lien
-    const cleanEmail = normalizeEmail(email);
+    // ✅ CORRECTION : On utilise l'email simple (sans suppression des points)
+    // pour retrouver l'utilisateur tel qu'il est enregistré.
+    const searchEmail = email.toLowerCase().trim();
 
-    if (!validateEmail(cleanEmail)) {
+    if (!validateEmail(searchEmail)) {
       setEmailError("Email invalide.");
       return;
     }
     setLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      const { error } = await supabase.auth.resetPasswordForEmail(searchEmail, {
         redirectTo: `${window.location.origin}/auth/callback?next=/settings/password`,
       });
       if (error) throw error;
@@ -132,19 +133,19 @@ function LoginForm() {
     setPasswordError("");
     setInfoMessage("");
 
-    // 1. ✅ SÉCURITÉ : Nettoyage et Normalisation de l'email
-    // Transforme "Jean.Dupont+test@Gmail.com" en "jeandupont@gmail.com"
-    const cleanEmail = normalizeEmail(email);
+    // 1. Préparation des emails
+    const inputEmail = email.toLowerCase().trim(); // Version simple pour CONNEXION
+    const strictEmail = normalizeEmail(email); // Version stricte pour INSCRIPTION
 
-    // 2. ✅ SÉCURITÉ : Blocage des emails jetables
-    if (isBlockedEmail(cleanEmail)) {
+    // 2. Sécurité : Blocage des emails jetables (basé sur la version stricte)
+    if (isBlockedEmail(strictEmail)) {
       setGlobalError(
         "Les adresses temporaires ou jetables ne sont pas acceptées.",
       );
       return;
     }
 
-    if (!validateEmail(cleanEmail)) {
+    if (!validateEmail(inputEmail)) {
       setEmailError("Email incorrect.");
       return;
     }
@@ -160,20 +161,22 @@ function LoginForm() {
     setLoading(true);
     try {
       if (isLogin) {
-        // Connexion avec l'email nettoyé
+        // ✅ CORRECTION : Connexion avec l'email simple (inputEmail)
+        // pour matcher exactement la base de données
         const { error } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
+          email: inputEmail,
           password,
         });
         if (error) throw error;
       } else {
-        // Inscription avec l'email nettoyé
+        // ✅ SÉCURITÉ : Inscription avec l'email strict (strictEmail)
+        // pour empêcher les doublons/alias
         const { error } = await supabase.auth.signUp({
-          email: cleanEmail,
+          email: strictEmail,
           password,
           options: {
             emailRedirectTo: `${window.location.origin}/auth/callback`,
-            data: { full_name: cleanEmail.split("@")[0] },
+            data: { full_name: strictEmail.split("@")[0] },
           },
         });
         if (error) throw error;
@@ -188,7 +191,7 @@ function LoginForm() {
       if (msg.includes("Invalid login"))
         msg = "Email ou mot de passe incorrect.";
       if (msg.includes("User already registered"))
-        msg = "Cet email est déjà utilisé."; // Se déclenchera si l'alias existe déjà !
+        msg = "Cet email est déjà utilisé.";
       setGlobalError(msg);
     } finally {
       setLoading(false);
