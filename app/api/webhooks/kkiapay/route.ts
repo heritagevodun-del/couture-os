@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
-// On initialise Supabase avec les droits d'ADMIN (Service Role)
+// Initialisation Supabase ADMIN
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -9,22 +10,62 @@ const supabaseAdmin = createClient(
 
 export async function POST(request: Request) {
   try {
-    // 1. Lire les données envoyées par Kkiapay
-    const body = await request.json();
-    console.log("🔔 Webhook Kkiapay reçu :", body);
+    // 1. Récupération de la signature envoyée par Kkiapay
+    const signature = request.headers.get("x-kkiapay-signature");
+    const secret = process.env.KKIAPAY_SECRET_HASH;
 
-    // Kkiapay envoie généralement : { transactionId, status, amount, metadata: { userId, ... } }
-    const { status, transactionId, metadata } = body;
-
-    // 2. Vérification de sécurité basique
-    if (status !== "SUCCESS") {
+    if (!secret) {
+      console.error(
+        "❌ ERREUR CONFIG : KKIAPAY_SECRET_HASH manquant dans .env",
+      );
       return NextResponse.json(
-        { message: "Transaction non réussie" },
-        { status: 400 },
+        { message: "Server Configuration Error" },
+        { status: 500 },
       );
     }
 
-    if (!metadata?.userId) {
+    // 2. Lecture du corps brut (Raw Body) pour la vérification
+    const rawBody = await request.text();
+
+    // 3. Vérification cryptographique de la signature (HMAC SHA256)
+    // On recrée la signature avec notre secret et le contenu reçu
+    const computedSignature = crypto
+      .createHmac("sha256", secret)
+      .update(rawBody)
+      .digest("hex");
+
+    // Comparaison sécurisée
+    if (signature !== computedSignature) {
+      console.error("⛔ ALERTE SÉCURITÉ : Signature Webhook invalide !");
+      return NextResponse.json(
+        { message: "Forbidden: Invalid Signature" },
+        { status: 403 },
+      );
+    }
+
+    // 4. Si la signature est bonne, on parse le JSON
+    const body = JSON.parse(rawBody);
+    console.log("🔔 Webhook Kkiapay AUTHENTIFIÉ reçu");
+
+    const { status, transactionId, metadata } = body;
+
+    // 5. Logique métier standard
+    if (status !== "SUCCESS") {
+      return NextResponse.json({ message: "Transaction non réussie" });
+    }
+
+    // Gestion robuste des métadonnées (parfois string, parfois objet)
+    let userId = metadata?.userId;
+    if (!userId && typeof metadata === "string") {
+      try {
+        const parsedMeta = JSON.parse(metadata);
+        userId = parsedMeta.userId;
+      } catch (e) {
+        console.error("Erreur parsing metadata", e);
+      }
+    }
+
+    if (!userId) {
       console.error("❌ Pas de User ID dans les métadonnées");
       return NextResponse.json(
         { message: "User ID manquant" },
@@ -32,20 +73,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const userId = metadata.userId;
-
-    // 3. Calcul de la date de fin (+30 jours)
+    // 6. Calcul date fin (+30 jours)
     const now = new Date();
     const endDate = new Date(now.setDate(now.getDate() + 30));
 
-    // 4. Mise à jour de Supabase
+    // 7. Update Supabase
     const { error } = await supabaseAdmin
       .from("profiles")
       .update({
-        subscription_status: "active", // ou 'pro'
-        plan_id: "premium_africa", // Pour savoir qu'il est sur l'offre Afrique
+        subscription_status: "active",
+        plan_id: "premium_africa",
         current_period_end: endDate.toISOString(),
-        stripe_customer_id: `kkiapay_${transactionId}`, // On stocke l'ID transaction ici pour référence
+        stripe_customer_id: `kkiapay_${transactionId}`,
       })
       .eq("id", userId);
 
@@ -54,9 +93,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Erreur interne" }, { status: 500 });
     }
 
-    console.log(
-      `✅ Abonnement activé pour l'utilisateur ${userId} jusqu'au ${endDate}`,
-    );
+    console.log(`✅ Abonnement activé pour ${userId} (Sécurisé)`);
     return NextResponse.json({ received: true });
   } catch (err) {
     console.error("❌ Erreur Webhook :", err);
