@@ -13,6 +13,7 @@ import {
   MapPin,
   Loader2,
   Zap,
+  Smartphone, // ✅ Ajout de l'icône Smartphone ici
 } from "lucide-react";
 import Link from "next/link";
 
@@ -171,13 +172,26 @@ export default function PricingPage() {
               )}
             </button>
 
-            {zone === "africa" && userId && (
-              <KkiapayButton
-                amount={2000}
-                email={userEmail}
-                fullName={userName}
-                userId={userId}
-              />
+            {/* ✅ CORRECTION ICI : Toujours afficher le bouton en Afrique */}
+            {zone === "africa" && (
+              userId ? (
+                // Si connecté, on affiche le vrai composant Kkiapay
+                <KkiapayButton
+                  amount={2000}
+                  email={userEmail}
+                  fullName={userName}
+                  userId={userId}
+                />
+              ) : (
+                // Si NON connecté, on affiche un faux bouton qui redirige vers le login
+                <button
+                  onClick={() => router.push("/login?next=/pricing")}
+                  className="w-full mt-3 bg-[#25D366] text-white font-bold py-4 rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg"
+                >
+                  <Smartphone size={18} />
+                  Payer par Mobile Money (MTN/Moov)
+                </button>
+              )
             )}
           </div>
 
