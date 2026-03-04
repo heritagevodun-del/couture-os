@@ -3,79 +3,18 @@ import { stripe } from "@/lib/stripe";
 import { createClient } from "@/utils/supabase/server";
 import Stripe from "stripe";
 
-// 👇👇👇 C'EST ICI QU'IL FAUT COLLER TES VRAIS IDS LIVE 👇👇👇
+// Configuration des prix (Live IDs)
 const PRICES = {
-  // Colle l'ID du prix à 2000 FCFA ici (ex: price_1QjXa...)
   africa: "price_1SzGr7EQ6UKEvtgm1uBmoR9R",
-
-  // Colle l'ID du prix à 9.99 EUR ici (ex: price_1QjXb...)
   world: "price_1SzGtVEQ6UKEvtgmI1ZtuvDw",
 };
-
-// Liste des pays éligibles au tarif Afrique (Pour bloquer les tricheurs si besoin)
-const AFRICA_COUNTRIES = [
-  "DZ",
-  "AO",
-  "BJ",
-  "BW",
-  "BF",
-  "BI",
-  "CM",
-  "CV",
-  "CF",
-  "TD",
-  "KM",
-  "CG",
-  "CD",
-  "CI",
-  "DJ",
-  "EG",
-  "GQ",
-  "ER",
-  "SZ",
-  "ET",
-  "GA",
-  "GM",
-  "GH",
-  "GN",
-  "GW",
-  "KE",
-  "LS",
-  "LR",
-  "LY",
-  "MG",
-  "MW",
-  "ML",
-  "MR",
-  "MU",
-  "MA",
-  "MZ",
-  "NA",
-  "NE",
-  "NG",
-  "RW",
-  "ST",
-  "SN",
-  "SC",
-  "SL",
-  "SO",
-  "ZA",
-  "SS",
-  "SD",
-  "TZ",
-  "TG",
-  "TN",
-  "UG",
-  "ZM",
-  "ZW",
-];
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { zone } = body; // On récupère le choix de l'utilisateur
+    const { zone } = body;
 
-    // 1. Vérification Authentification
+    // 1. Vérification Authentification stricte
     const supabase = await createClient();
     const {
       data: { user },
@@ -88,61 +27,70 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Sélection du bon prix
-    let priceId = PRICES.world; // Par défaut : Monde
-    let allowedCountries:
-      | Stripe.Checkout.SessionCreateParams.ShippingAddressCollection.AllowedCountry[]
-      | undefined = undefined;
+    // 2. Vérification de l'historique du profil
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("stripe_customer_id, trial_end")
+      .eq("id", user.id)
+      .single();
 
-    if (zone === "africa") {
-      priceId = PRICES.africa;
-      // Optionnel : On peut forcer l'adresse de facturation en Afrique pour ce tarif
-      allowedCountries =
-        AFRICA_COUNTRIES as Stripe.Checkout.SessionCreateParams.ShippingAddressCollection.AllowedCountry[];
-    }
-
-    // 3. Création de la session de paiement
-    // Récupération de l'URL du site (Prod ou Local)
+    // 3. Configuration de la session de paiement
+    const priceId = zone === "africa" ? PRICES.africa : PRICES.world;
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
 
-    const session = await stripe.checkout.sessions.create({
+    // Typage strict pour éviter les erreurs TypeScript
+    const sessionConfig: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
-      payment_method_types: ["card"], // Carte bancaire
-      customer_email: user.email, // Pré-remplit l'email
+      payment_method_types: ["card"],
       line_items: [
         {
           price: priceId,
           quantity: 1,
         },
       ],
-      // On demande l'adresse pour valider la localisation et pour la facture
+      // Uniquement l'adresse de facturation (Friction UX minimale)
       billing_address_collection: "required",
 
-      // Si zone Afrique, on limite les pays sélectionnables (Optionnel, tu peux retirer ce bloc si ça gêne)
-      shipping_address_collection:
-        zone === "africa"
-          ? { allowed_countries: allowedCountries! }
-          : undefined,
-
-      // Métadonnées pour retrouver le user plus tard via Webhook
       metadata: {
         userId: user.id,
-        planName: "premium",
+        planName: "pro", // Alignement strict avec ta base de données
         zone: zone,
       },
-
-      // Redirections
       success_url: `${baseUrl}/dashboard?payment=success`,
       cancel_url: `${baseUrl}/pricing?payment=cancelled`,
-
-      // Langue de la page Stripe
       locale: "fr",
+    };
 
-      // Essai gratuit (si configuré ici, sinon configurer dans Stripe directement)
-      subscription_data: {
-        trial_period_days: 60,
-      },
-    });
+    // --- LOGIQUE ANTI-DUPLICATION (CLONAGE) ---
+    // Si on a déjà un ID client Stripe (et pas un ID Kkiapay), on le réutilise.
+    if (
+      profile?.stripe_customer_id &&
+      profile.stripe_customer_id.startsWith("cus_")
+    ) {
+      sessionConfig.customer = profile.stripe_customer_id;
+    } else {
+      sessionConfig.customer_email = user.email;
+    }
+
+    // --- LOGIQUE DE FACTURATION INTELLIGENTE (TRIAL) ---
+    if (profile?.trial_end) {
+      // On convertit la date de fin d'essai en timestamp Unix (secondes) pour Stripe
+      const trialEndUnix = Math.floor(
+        new Date(profile.trial_end).getTime() / 1000,
+      );
+      const nowUnix = Math.floor(Date.now() / 1000);
+
+      // Stripe exige que la fin de l'essai soit au moins dans 48h.
+      // S'il lui reste plus de 48h, Stripe attendra. S'il lui reste moins (ou échu), facturation immédiate.
+      if (trialEndUnix > nowUnix + 48 * 3600) {
+        sessionConfig.subscription_data = {
+          trial_end: trialEndUnix,
+        };
+      }
+    }
+
+    // 4. Génération du lien de paiement sécurisé
+    const session = await stripe.checkout.sessions.create(sessionConfig);
 
     return NextResponse.json({ url: session.url });
   } catch (error: unknown) {
