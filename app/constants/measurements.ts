@@ -1,15 +1,14 @@
-// --- DÉFINITIONS DES TYPES (Pour la rigueur du code) ---
+// --- DÉFINITIONS DES TYPES ---
 
 export type MeasurementField = {
-  id: string; // La clé qui sera sauvée en base (ex: 'tour_taille')
-  label: string; // Ce que l'utilisateur voit (ex: 'Tour de Taille')
-  unit?: string; // cm, pouces, etc.
+  id: string; // Clé BDD (ex: 'tour_taille')
+  label: string; // Affichage UI (ex: 'Tour de Taille')
+  unit: string; // 🛡️ Rendu obligatoire pour anticiper l'internationalisation
 };
 
 export type MeasurementTemplate = {
   id: string;
-  label: string; // Le nom du gabarit dans la liste déroulante
-  icon: string; // Une petite icône pour faire joli
+  label: string; // Nom du gabarit
   fields: MeasurementField[];
 };
 
@@ -19,69 +18,70 @@ export const MEASUREMENT_TEMPLATES: MeasurementTemplate[] = [
   {
     id: "femme_standard",
     label: "Femme - Standard (Robe/Jupe)",
-    icon: "👩",
     fields: [
-      { id: "epaule", label: "Épaule à Épaule" },
-      { id: "poitrine", label: "Tour de Poitrine" },
-      { id: "taille", label: "Tour de Taille" },
-      { id: "hanches", label: "Tour de Hanches" },
-      { id: "longueur_robe", label: "Longueur Totale Robe" },
-      { id: "longueur_manche", label: "Longueur Manche" },
-      { id: "tour_bras", label: "Tour de Bras" },
+      { id: "epaule", label: "Épaule à Épaule", unit: "cm" },
+      { id: "poitrine", label: "Tour de Poitrine", unit: "cm" },
+      { id: "hauteur_poitrine", label: "Hauteur Poitrine", unit: "cm" }, // ✅ Ajout Pro
+      { id: "ecart_poitrine", label: "Écart Poitrine", unit: "cm" }, // ✅ Ajout Pro
+      { id: "taille", label: "Tour de Taille", unit: "cm" },
+      { id: "hanches", label: "Tour de Hanches", unit: "cm" },
+      { id: "longueur_robe", label: "Longueur Totale", unit: "cm" },
+      { id: "longueur_manche", label: "Longueur Manche", unit: "cm" },
+      { id: "tour_bras", label: "Tour de Bras", unit: "cm" },
     ],
   },
   {
     id: "homme_costume",
     label: "Homme - Costume / Chemise",
-    icon: "👨",
     fields: [
-      { id: "col", label: "Tour de Cou" },
-      { id: "carrure_dos", label: "Carrure Dos" },
-      { id: "poitrine", label: "Tour de Poitrine" },
-      { id: "ventre", label: "Tour de Ventre" },
-      { id: "longueur_veste", label: "Longueur Veste" },
-      { id: "longueur_manche", label: "Longueur Manche" },
-      { id: "ceinture", label: "Ceinture Pantalon" },
-      { id: "longueur_jambe", label: "Longueur Pantalon" },
+      { id: "col", label: "Tour de Cou", unit: "cm" },
+      { id: "carrure_dos", label: "Carrure Dos", unit: "cm" },
+      { id: "poitrine", label: "Tour de Poitrine", unit: "cm" },
+      { id: "ventre", label: "Tour de Ventre", unit: "cm" },
+      { id: "longueur_veste", label: "Longueur Veste", unit: "cm" },
+      { id: "longueur_manche", label: "Longueur Manche", unit: "cm" },
+      { id: "ceinture", label: "Ceinture Pantalon", unit: "cm" },
+      { id: "cuisse", label: "Tour de Cuisse", unit: "cm" }, // ✅ Ajout Pro
+      { id: "longueur_jambe", label: "Longueur Pantalon", unit: "cm" },
     ],
   },
   {
     id: "afrique_femme",
     label: "Afrique Femme - Boubou / Pagne",
-    icon: "🌍",
     fields: [
-      { id: "dos", label: "Largeur Dos" },
-      { id: "longueur_boubou", label: "Longueur Boubou" },
-      { id: "taille_pagne", label: "Tour Taille Pagne" },
-      { id: "bassin_pagne", label: "Tour Bassin Pagne" },
-      { id: "longueur_pagne", label: "Longueur Pagne/Jupe" },
-      { id: "profondeur_encolure", label: "Profondeur Encolure" },
-      { id: "fente", label: "Hauteur Fente" },
+      { id: "dos", label: "Largeur Dos", unit: "cm" },
+      { id: "poitrine", label: "Tour de Poitrine", unit: "cm" }, // ✅ Souvent nécessaire même en boubou
+      { id: "longueur_boubou", label: "Longueur Boubou", unit: "cm" },
+      { id: "taille_pagne", label: "Tour Taille Pagne", unit: "cm" },
+      { id: "bassin_pagne", label: "Tour Bassin Pagne", unit: "cm" },
+      { id: "longueur_pagne", label: "Longueur Pagne/Jupe", unit: "cm" },
+      { id: "profondeur_encolure", label: "Profondeur Encolure", unit: "cm" },
+      { id: "fente", label: "Hauteur Fente", unit: "cm" },
     ],
   },
   {
     id: "afrique_homme",
     label: "Afrique Homme - Agbada / Tunique",
-    icon: "🌍",
     fields: [
-      { id: "envergure", label: "Envergure (Grand Boubou)" },
-      { id: "longueur_caftan", label: "Longueur Caftan" },
-      { id: "encolure", label: "Tour Encolure" },
-      { id: "poignet", label: "Tour Poignet" },
-      { id: "cuisse", label: "Largeur Cuisse (Pantalon)" },
-      { id: "longueur_pantalon", label: "Longueur Pantalon" },
+      { id: "envergure", label: "Envergure (Grand Boubou)", unit: "cm" },
+      { id: "longueur_caftan", label: "Longueur Caftan", unit: "cm" },
+      { id: "encolure", label: "Tour Encolure", unit: "cm" },
+      { id: "poitrine", label: "Tour de Poitrine", unit: "cm" }, // ✅ Toujours utile
+      { id: "poignet", label: "Tour Poignet", unit: "cm" },
+      { id: "ceinture", label: "Ceinture Pantalon", unit: "cm" },
+      { id: "cuisse", label: "Largeur Cuisse", unit: "cm" },
+      { id: "longueur_pantalon", label: "Longueur Pantalon", unit: "cm" },
     ],
   },
   {
     id: "enfant",
     label: "Enfant (Mixte)",
-    icon: "👶",
     fields: [
-      { id: "stature", label: "Hauteur Totale (Stature)" },
-      { id: "poitrine", label: "Tour de Poitrine" },
-      { id: "taille", label: "Tour de Taille" },
-      { id: "longueur_dos", label: "Longueur Dos" },
-      { id: "longueur_vetement", label: "Longueur Vêtement" },
+      { id: "stature", label: "Hauteur Totale (Stature)", unit: "cm" },
+      { id: "poitrine", label: "Tour de Poitrine", unit: "cm" },
+      { id: "taille", label: "Tour de Taille", unit: "cm" },
+      { id: "longueur_dos", label: "Longueur Dos", unit: "cm" },
+      { id: "longueur_vetement", label: "Longueur Vêtement", unit: "cm" },
     ],
   },
 ];

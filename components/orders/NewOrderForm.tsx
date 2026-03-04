@@ -14,6 +14,7 @@ import {
   Coins,
   AlertCircle,
   Save,
+  ChevronDown,
 } from "lucide-react";
 
 interface NewOrderFormProps {
@@ -82,16 +83,21 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
         return;
       }
 
-      // Conversion des montants
-      const priceInt = formData.price ? parseFloat(formData.price) : 0;
-      const advanceInt = formData.advance ? parseFloat(formData.advance) : 0;
+      // 🛡️ SÉCURITÉ FINANCIÈRE : Remplacement de la virgule mobile AVANT le parsing
+      const safePrice = formData.price ? formData.price.replace(",", ".") : "0";
+      const safeAdvance = formData.advance
+        ? formData.advance.replace(",", ".")
+        : "0";
+
+      const priceFloat = parseFloat(safePrice) || 0;
+      const advanceFloat = parseFloat(safeAdvance) || 0;
 
       const { error } = await supabase.from("orders").insert([
         {
           client_id: clientId,
           title: formData.title,
-          price: priceInt,
-          advance: advanceInt,
+          price: priceFloat,
+          advance: advanceFloat,
           deadline: formData.deadline || null,
           description: formData.description,
           status: formData.status,
@@ -119,27 +125,28 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
   };
 
   return (
-    <div className="max-w-2xl mx-auto pb-24">
+    <div className="max-w-2xl mx-auto pb-24 font-sans">
       {/* --- HEADER --- */}
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex items-center gap-4 mb-8">
         <Link
           href={`/clients/${clientId}`}
-          className="p-2 bg-white dark:bg-neutral-900 rounded-full border border-gray-200 dark:border-gray-800 text-gray-500 hover:text-black dark:hover:text-white transition shadow-sm"
-          aria-label="Retour au client"
+          className="p-3 bg-white dark:bg-[#111] rounded-full border border-gray-200 dark:border-gray-800 text-gray-500 hover:text-[#D4AF37] transition-colors shadow-sm"
+          aria-label="Retour au dossier client"
         >
           <ArrowLeft size={20} />
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white font-serif tracking-tight">
           Nouvelle Commande
         </h1>
       </div>
 
       {/* --- CARD FORMULAIRE --- */}
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
-        <div className="p-6 md:p-8">
+      <div className="bg-white dark:bg-[#111] rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="p-6 md:p-10">
           {errorMsg && (
-            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl border border-red-100 dark:border-red-900/50 flex items-center gap-2">
-              <AlertCircle size={18} /> {errorMsg}
+            <div className="mb-8 p-4 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 text-sm rounded-xl border border-red-200 dark:border-red-900/50 flex items-center gap-3">
+              <AlertCircle size={20} className="shrink-0" />{" "}
+              <span className="font-medium">{errorMsg}</span>
             </div>
           )}
 
@@ -148,7 +155,7 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
             <div>
               <label
                 htmlFor="title"
-                className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"
+                className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 ml-1"
               >
                 Modèle / Titre <span className="text-red-500">*</span>
               </label>
@@ -159,7 +166,7 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
                   type="text"
                   name="title"
                   required
-                  className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all dark:text-white font-medium text-base"
+                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-800 rounded-xl focus:ring-2 focus:ring-[#D4AF37]/50 outline-none transition-all dark:text-white font-medium text-base placeholder-gray-400"
                   placeholder="Ex: Robe de soirée rouge"
                   value={formData.title}
                   onChange={handleChange}
@@ -173,7 +180,7 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
               <div>
                 <label
                   htmlFor="price"
-                  className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"
+                  className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 ml-1"
                 >
                   Prix Total ({currency}){" "}
                   <span className="text-red-500">*</span>
@@ -182,11 +189,11 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
                   <Banknote className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
                   <input
                     id="price"
-                    type="number"
+                    type="text" // 👈 Type Text pour autoriser la virgule sur clavier mobile fr
                     name="price"
                     required
                     inputMode="decimal"
-                    className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all dark:text-white font-medium text-base"
+                    className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-800 rounded-xl focus:ring-2 focus:ring-[#D4AF37]/50 outline-none transition-all dark:text-white font-bold text-base placeholder-gray-400"
                     placeholder="0"
                     value={formData.price}
                     onChange={handleChange}
@@ -198,18 +205,18 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
               <div>
                 <label
                   htmlFor="advance"
-                  className="block text-xs font-bold text-green-600 dark:text-green-400 uppercase mb-2"
+                  className="block text-[11px] font-bold text-[#D4AF37] uppercase tracking-wider mb-2 ml-1"
                 >
                   Avance Perçue
                 </label>
                 <div className="relative">
-                  <Coins className="absolute left-4 top-1/2 -translate-y-1/2 text-green-500 h-5 w-5" />
+                  <Coins className="absolute left-4 top-1/2 -translate-y-1/2 text-[#D4AF37] h-5 w-5" />
                   <input
                     id="advance"
-                    type="number"
+                    type="text"
                     name="advance"
                     inputMode="decimal"
-                    className="w-full pl-12 pr-4 py-3 bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-green-700 dark:text-green-300 font-bold placeholder-green-300 text-base"
+                    className="w-full pl-12 pr-4 py-3.5 bg-[#D4AF37]/5 dark:bg-[#D4AF37]/10 border border-[#D4AF37]/30 rounded-xl focus:ring-2 focus:ring-[#D4AF37] outline-none transition-all text-gray-900 dark:text-white font-bold placeholder-[#D4AF37]/50 text-base"
                     placeholder="0"
                     value={formData.advance}
                     onChange={handleChange}
@@ -222,7 +229,7 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
             <div>
               <label
                 htmlFor="deadline"
-                className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"
+                className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 ml-1"
               >
                 Date de Livraison
               </label>
@@ -232,7 +239,7 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
                   id="deadline"
                   type="date"
                   name="deadline"
-                  className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all dark:text-white font-medium appearance-none text-base"
+                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-800 rounded-xl focus:ring-2 focus:ring-[#D4AF37]/50 outline-none transition-all dark:text-white font-medium appearance-none text-base"
                   value={formData.deadline}
                   onChange={handleChange}
                 />
@@ -243,7 +250,7 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
             <div>
               <label
                 htmlFor="description"
-                className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"
+                className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 ml-1"
               >
                 Détails (Tissu, modifications...)
               </label>
@@ -253,7 +260,7 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
                   id="description"
                   name="description"
                   rows={4}
-                  className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all resize-none dark:text-white text-base"
+                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-800 rounded-xl focus:ring-2 focus:ring-[#D4AF37]/50 outline-none transition-all resize-none dark:text-white text-base placeholder-gray-400"
                   placeholder="Pagne Woodin, col V, doublure en soie..."
                   value={formData.description}
                   onChange={handleChange}
@@ -265,7 +272,7 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
             <div>
               <label
                 htmlFor="status"
-                className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"
+                className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 ml-1"
               >
                 Statut initial
               </label>
@@ -274,7 +281,7 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
                   id="status"
                   name="status"
                   aria-label="Statut de la commande"
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all dark:text-white font-medium appearance-none cursor-pointer text-base"
+                  className="w-full pl-4 pr-10 py-3.5 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-800 rounded-xl focus:ring-2 focus:ring-[#D4AF37]/50 outline-none transition-all dark:text-white font-medium appearance-none cursor-pointer text-sm"
                   value={formData.status}
                   onChange={handleChange}
                 >
@@ -282,21 +289,22 @@ export default function NewOrderForm({ clientId }: NewOrderFormProps) {
                     🟡 En attente (Pas commencé)
                   </option>
                   <option value="en_cours">🔵 En cours (Fabrication)</option>
-                  <option value="essayage">🟣 Essayage</option>
+                  <option value="essayage">🟣 Prêt pour essayage</option>
                   <option value="termine">🟢 Terminé (Prêt à livrer)</option>
                 </select>
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
-                  ▼
-                </div>
+                <ChevronDown
+                  size={18}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"
+                />
               </div>
             </div>
 
             {/* Bouton Créer */}
-            <div className="pt-4">
+            <div className="pt-6 border-t border-gray-100 dark:border-gray-800">
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-4 bg-black dark:bg-white text-white dark:text-black font-bold text-lg rounded-xl hover:scale-[1.02] transition-transform disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2 shadow-xl shadow-gray-200 dark:shadow-none"
+                className="w-full py-4 bg-[#D4AF37] hover:bg-[#b5952f] text-black font-bold text-lg rounded-xl hover:-translate-y-0.5 active:translate-y-0 transition-transform disabled:opacity-50 disabled:hover:translate-y-0 flex items-center justify-center gap-2 shadow-[0_4px_14px_0_rgba(212,175,55,0.39)]"
               >
                 {loading ? (
                   <Loader2 className="animate-spin h-6 w-6" />
