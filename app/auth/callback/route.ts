@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
               );
             } catch {
               // On ignore silencieusement les erreurs d'écriture de cookies
+              // C'est le comportement attendu/sécurisé pour les Route Handlers avec Supabase
             }
           },
         },
@@ -36,18 +37,20 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
-      // ✅ SUCCÈS : Redirection vers la destination prévue (ou Dashboard)
-      // On nettoie l'URL pour ne pas traîner le code
-      const forwardedUrl = new URL(next, origin);
-      return NextResponse.redirect(forwardedUrl);
+      // 🛡️ SÉCURITÉ : Prévention de la faille "Open Redirect"
+      // On s'assure que 'next' est une route interne (commence par /)
+      // Si un pirate injecte "https://malicious.com", on l'ignore et on force le "/dashboard"
+      const isRelativePath = next.startsWith("/") && !next.startsWith("//");
+      const secureNext = isRelativePath ? next : "/dashboard";
+
+      return NextResponse.redirect(`${origin}${secureNext}`);
     }
 
-    // Log serveur pour debugging si besoin
+    // Log serveur pour debugging (invisible pour l'utilisateur)
     console.error("Auth Callback Error:", error.message);
   }
 
   // ⚠️ CAS "LIEN CONSOMMÉ OU EXPIRÉ"
   // On redirige vers login avec un code d'erreur spécifique 'auth-callback-error'
-  // Le frontend affichera un message jaune "Lien invalide, essayez de vous connecter".
   return NextResponse.redirect(`${origin}/login?error=auth-callback-error`);
 }
