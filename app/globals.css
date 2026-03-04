@@ -75,8 +75,16 @@
   /* Scrollbar Hide : Cross-browser compatible */
   .scrollbar-hide {
     -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;     /* Firefox */
   }
+
+  /* 🔥 ASTUCE CTO : Le @supports fait taire l'avertissement de VS Code (Edge Tools) 
+     tout en gardant la compatibilité parfaite pour Firefox. */
+  @supports (scrollbar-width: none) {
+    .scrollbar-hide {
+      scrollbar-width: none;
+    }
+  }
+
   .scrollbar-hide::-webkit-scrollbar {
     display: none;             /* Safari and Chrome */
   }

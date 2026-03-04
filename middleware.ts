@@ -12,10 +12,22 @@ export async function middleware(request: NextRequest) {
     },
   });
 
+  // 🛡️ SÉCURITÉ : Fail-fast du Middleware
+  if (
+    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  ) {
+    console.error(
+      "🔥 ERREUR CRITIQUE : Variables Supabase manquantes dans le Middleware.",
+    );
+    // En cas de panne serveur, on laisse passer pour afficher une erreur 500 propre plus loin
+    return response;
+  }
+
   // 2. Création du client Supabase (SSR)
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       cookies: {
         getAll() {

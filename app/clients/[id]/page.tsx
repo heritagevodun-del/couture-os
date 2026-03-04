@@ -55,6 +55,13 @@ type ShopProfile = {
   currency: string;
 };
 
+// 🛡️ CORRECTION TS : Définition d'un type propre pour le dictionnaire de mesures
+type MeasurementsData = {
+  _template_id?: string;
+  _custom_fields_def?: CustomFieldDef[];
+  [key: string]: string | CustomFieldDef[] | undefined;
+};
+
 export default function ClientDetails({
   params,
 }: {
@@ -69,11 +76,15 @@ export default function ClientDetails({
   const [shopProfile, setShopProfile] = useState<ShopProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // États d'édition
+  // États d'édition avec le nouveau type strict
   const [isEditingMeasurements, setIsEditingMeasurements] = useState(false);
-  const [tempMeasurements, setTempMeasurements] = useState<
-    Record<string, string>
-  >({});
+  const [tempMeasurements, setTempMeasurements] = useState<MeasurementsData>(
+    {},
+  );
+
+  // États pour l'ajout dynamique de mesures
+  const [isAddingCustomField, setIsAddingCustomField] = useState(false);
+  const [newCustomFieldLabel, setNewCustomFieldLabel] = useState("");
 
   const [isEditingClient, setIsEditingClient] = useState(false);
   const [tempClientData, setTempClientData] = useState({
@@ -83,7 +94,7 @@ export default function ClientDetails({
     notes: "",
   });
 
-  // --- 1. CHARGEMENT DES DONNÉES (Optimisé en parallèle) ---
+  // --- 1. CHARGEMENT DES DONNÉES ---
   useEffect(() => {
     const fetchData = async () => {
       if (!id) return;
@@ -97,7 +108,6 @@ export default function ClientDetails({
         return;
       }
 
-      // 🛡️ PERF : On exécute les requêtes simultanément
       const [profileRes, clientRes, ordersRes] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", user.id).single(),
         supabase
@@ -159,6 +169,10 @@ export default function ClientDetails({
     const field = currentTemplate.fields.find((f) => f.id === key);
     if (field) return field.label;
 
+    const tempCustomDefs = tempMeasurements?._custom_fields_def || [];
+    const tempCustomField = tempCustomDefs.find((f) => f.id === key);
+    if (tempCustomField) return tempCustomField.label;
+
     const customDefs: CustomFieldDef[] =
       client?.measurements?._custom_fields_def || [];
     const customField = customDefs.find((f) => f.id === key);
@@ -196,13 +210,37 @@ export default function ClientDetails({
     if (!error) {
       setClient({ ...client, measurements: tempMeasurements });
       setIsEditingMeasurements(false);
+      setIsAddingCustomField(false);
     }
   };
 
-  // 🛡️ UX : Gestion de la virgule sur mobile pendant la modification
   const handleMeasureChange = (key: string, rawValue: string) => {
     const sanitizedValue = rawValue.replace(",", ".");
     setTempMeasurements((prev) => ({ ...prev, [key]: sanitizedValue }));
+  };
+
+  const handleAddCustomField = () => {
+    if (!newCustomFieldLabel.trim()) return;
+
+    const newId = `custom_${Date.now()}`;
+    const newDef: CustomFieldDef = {
+      id: newId,
+      label: newCustomFieldLabel.trim(),
+    };
+
+    setTempMeasurements((prev) => {
+      const existingDefs = Array.isArray(prev._custom_fields_def)
+        ? prev._custom_fields_def
+        : [];
+      return {
+        ...prev,
+        _custom_fields_def: [...existingDefs, newDef],
+        [newId]: "",
+      };
+    });
+
+    setNewCustomFieldLabel("");
+    setIsAddingCustomField(false);
   };
 
   const handleDeleteClient = async () => {
@@ -245,8 +283,6 @@ export default function ClientDetails({
     e.stopPropagation();
     if (!client) return;
 
-    // 🛡️ CORRECTION TS : On génère un numéro à 6 chiffres unique basé sur la date de création.
-    // Cela garantit un ID stable, unique, ET qui respecte le type "number" attendu par invoiceGenerator
     const numericOrderNumber =
       Math.floor(new Date(order.created_at).getTime() / 1000) % 1000000;
 
@@ -280,7 +316,7 @@ export default function ClientDetails({
         price: order.price,
         advance: order.advance || 0,
         status: order.status,
-        client_order_number: numericOrderNumber, // ✅ Parfaitement typé !
+        client_order_number: numericOrderNumber,
       },
     });
   };
@@ -436,7 +472,11 @@ export default function ClientDetails({
             ) : (
               <div className="flex gap-2 w-full sm:w-auto">
                 <button
-                  onClick={() => setIsEditingMeasurements(false)}
+                  onClick={() => {
+                    setIsEditingMeasurements(false);
+                    setIsAddingCustomField(false);
+                    setTempMeasurements(client?.measurements || {});
+                  }}
                   className="flex-1 sm:flex-none text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:text-black dark:hover:text-white px-4 py-2.5 rounded-xl transition-colors"
                 >
                   Annuler
@@ -453,6 +493,7 @@ export default function ClientDetails({
 
           <div className="p-6 md:p-8 relative z-10">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Affichage des champs de mesures */}
               {Object.entries(tempMeasurements).map(([key, value]) => {
                 if (key.startsWith("_") && key !== "_custom_fields_def")
                   return null;
@@ -461,10 +502,13 @@ export default function ClientDetails({
                 const label = getLabelForField(key);
                 if (!label) return null;
 
+                // 🛡️ CORRECTION TS : On s'assure que la valeur affichée est bien un texte
+                const displayValue = typeof value === "string" ? value : "";
+
                 return (
                   <div
                     key={key}
-                    className="bg-gray-50 dark:bg-black p-3.5 rounded-2xl border border-gray-100 dark:border-gray-800 focus-within:ring-2 focus-within:ring-[#D4AF37]/50 transition-all group"
+                    className="bg-gray-50 dark:bg-black p-3.5 rounded-2xl border border-gray-100 dark:border-gray-800 focus-within:ring-2 focus-within:ring-[#D4AF37]/50 transition-all group flex flex-col justify-center"
                   >
                     <span
                       className="block text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 mb-1.5 truncate group-focus-within:text-[#D4AF37] transition-colors"
@@ -477,7 +521,7 @@ export default function ClientDetails({
                         type="text"
                         inputMode="decimal"
                         className="w-full bg-transparent border-none outline-none font-black text-gray-900 dark:text-white p-0 text-xl md:text-2xl placeholder-gray-300"
-                        value={value}
+                        value={displayValue}
                         onChange={(e) =>
                           handleMeasureChange(key, e.target.value)
                         }
@@ -485,7 +529,7 @@ export default function ClientDetails({
                       />
                     ) : (
                       <span className="text-xl md:text-2xl font-black text-gray-900 dark:text-white tracking-tight block">
-                        {value || "--"}{" "}
+                        {displayValue || "--"}{" "}
                         <span className="text-xs font-medium text-gray-400 ml-0.5">
                           cm
                         </span>
@@ -494,6 +538,54 @@ export default function ClientDetails({
                   </div>
                 );
               })}
+
+              {/* 🛡️ BOUTON D'AJOUT DE NOUVELLE MESURE (Visible uniquement en mode édition) */}
+              {isEditingMeasurements && (
+                <div className="bg-gray-50/50 dark:bg-[#111] p-3.5 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 flex flex-col justify-center items-center transition-all min-h-[85px]">
+                  {!isAddingCustomField ? (
+                    <button
+                      onClick={() => setIsAddingCustomField(true)}
+                      className="flex flex-col items-center gap-1 text-gray-400 hover:text-[#D4AF37] transition-colors w-full h-full justify-center"
+                    >
+                      <Plus size={20} />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">
+                        Ajouter
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="w-full animate-in fade-in zoom-in-95 flex flex-col gap-2">
+                      <input
+                        type="text"
+                        placeholder="Ex: Épaule gauche"
+                        className="w-full bg-white dark:bg-black border border-gray-200 dark:border-gray-700 rounded-lg p-2 text-xs font-medium text-gray-900 dark:text-white outline-none focus:border-[#D4AF37]"
+                        value={newCustomFieldLabel}
+                        onChange={(e) => setNewCustomFieldLabel(e.target.value)}
+                        autoFocus
+                        onKeyDown={(e) =>
+                          e.key === "Enter" && handleAddCustomField()
+                        }
+                      />
+                      <div className="flex gap-1 w-full">
+                        <button
+                          onClick={() => {
+                            setIsAddingCustomField(false);
+                            setNewCustomFieldLabel("");
+                          }}
+                          className="flex-1 bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded py-1.5 text-[10px] font-bold uppercase hover:bg-gray-300 dark:hover:bg-gray-700 transition"
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          onClick={handleAddCustomField}
+                          className="flex-1 bg-[#D4AF37] text-black rounded py-1.5 text-[10px] font-bold uppercase hover:bg-[#b5952f] transition"
+                        >
+                          OK
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             {Object.keys(tempMeasurements).length === 0 && (
               <p className="text-center text-sm text-gray-400 italic py-4">

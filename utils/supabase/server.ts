@@ -2,11 +2,21 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 export async function createClient() {
+  // 🛡️ SÉCURITÉ & DX : Le même bouclier de protection que côté client
+  if (
+    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  ) {
+    throw new Error(
+      "🔥 ERREUR CRITIQUE : Les variables d'environnement Supabase (URL ou ANON_KEY) sont manquantes côté serveur.",
+    );
+  }
+
   const cookieStore = await cookies();
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       cookies: {
         getAll() {
@@ -19,7 +29,8 @@ export async function createClient() {
             );
           } catch {
             // Cette erreur est normale si appelée depuis un Server Component
-            // On l'ignore silencieusement.
+            // (les SC ne peuvent pas modifier les cookies directement).
+            // On l'ignore silencieusement, le middleware prendra le relais.
           }
         },
       },

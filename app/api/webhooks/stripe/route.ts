@@ -6,10 +6,20 @@ import Stripe from "stripe";
 
 export const dynamic = "force-dynamic";
 
+// 🛡️ SÉCURITÉ : Fail-Fast pour le compte Admin
+if (
+  !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  !process.env.SUPABASE_SERVICE_ROLE_KEY
+) {
+  throw new Error(
+    "🔥 ERREUR CRITIQUE : Clés Supabase Admin manquantes pour le Webhook.",
+  );
+}
+
 // Init Supabase Admin (Accès racine pour écriture serveur)
 const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
   {
     auth: {
       autoRefreshToken: false,
@@ -26,6 +36,12 @@ export async function POST(req: Request) {
     return new NextResponse("Missing Stripe Signature", { status: 400 });
   }
 
+  // 🛡️ SÉCURITÉ : Fail-Fast pour le secret Webhook
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    console.error("🔥 ERREUR CRITIQUE : STRIPE_WEBHOOK_SECRET manquant.");
+    return new NextResponse("Server Configuration Error", { status: 500 });
+  }
+
   let event: Stripe.Event;
 
   // 1. Vérification de la signature cryptographique
@@ -33,7 +49,7 @@ export async function POST(req: Request) {
     event = stripe.webhooks.constructEvent(
       body,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET!,
+      process.env.STRIPE_WEBHOOK_SECRET,
     );
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : "Unknown Error";
@@ -44,7 +60,6 @@ export async function POST(req: Request) {
   // 2. Gestion du Cycle de Vie
   try {
     switch (event.type) {
-      
       // ✅ CAS A : PREMIER PAIEMENT (Création de l'abonnement)
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
@@ -52,11 +67,13 @@ export async function POST(req: Request) {
         const planName = session.metadata?.planName;
 
         if (!userId) {
-          console.error("⚠️ Webhook ignoré : Pas de userId dans les métadonnées");
+          console.error(
+            "⚠️ Webhook ignoré : Pas de userId dans les métadonnées",
+          );
           return new NextResponse("OK", { status: 200 });
         }
 
-        // 🛡️ SÉCURITÉ : On attache le userId au Customer Stripe pour ne jamais le perdre
+        // On attache le userId au Customer Stripe pour ne jamais le perdre
         await stripe.customers.update(session.customer as string, {
           metadata: { userId },
         });
@@ -73,7 +90,9 @@ export async function POST(req: Request) {
           .eq("id", userId);
 
         if (error) throw new Error(`Erreur DB (Checkout): ${error.message}`);
-        console.log(`🎉 Nouvel abonnement activé pour l'utilisateur : ${userId}`);
+        console.log(
+          `🎉 Nouvel abonnement activé pour l'utilisateur : ${userId}`,
+        );
         break;
       }
 
@@ -81,12 +100,8 @@ export async function POST(req: Request) {
       case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
+        const status = subscription.status;
 
-        // Le statut Stripe correspond parfaitement aux statuts de la DB : 'active', 'past_due', 'canceled'
-        const status = subscription.status; 
-
-        // 🛡️ ANTI RACE-CONDITION : Au lieu de bloquer si l'update échoue (si l'ID n'est pas encore là),
-        // on vérifie si l'enregistrement existe.
         const { error } = await supabaseAdmin
           .from("profiles")
           .update({
@@ -94,11 +109,15 @@ export async function POST(req: Request) {
             stripe_subscription_id: subscription.id,
           })
           .eq("stripe_customer_id", customerId);
-          
+
         if (error) {
-            console.error(`⚠️ Erreur DB (Update): Le client ${customerId} n'est peut-être pas encore sync.`);
+          console.error(
+            `⚠️ Erreur DB (Update): Le client ${customerId} n'est peut-être pas encore sync.`,
+          );
         } else {
-            console.log(`🔄 Statut mis à jour (${status}) pour le client Stripe ${customerId}`);
+          console.log(
+            `🔄 Statut mis à jour (${status}) pour le client Stripe ${customerId}`,
+          );
         }
         break;
       }
@@ -118,12 +137,13 @@ export async function POST(req: Request) {
           .eq("stripe_customer_id", customerId);
 
         if (error) throw new Error(`Erreur DB (Delete): ${error.message}`);
-        console.log(`🚫 Abonnement résilié pour le client Stripe ${customerId}`);
+        console.log(
+          `🚫 Abonnement résilié pour le client Stripe ${customerId}`,
+        );
         break;
       }
 
       default:
-        // On ignore silencieusement les événements non gérés (comme invoice.created)
         console.log(`ℹ️ Événement ignoré: ${event.type}`);
     }
   } catch (error) {
@@ -132,6 +152,5 @@ export async function POST(req: Request) {
     return new NextResponse("Erreur interne du traitement", { status: 500 });
   }
 
-  // Si tout s'est bien passé, on dit "OK" à Stripe pour qu'il arrête d'envoyer la requête
   return new NextResponse("OK", { status: 200 });
 }

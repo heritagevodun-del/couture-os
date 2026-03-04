@@ -1,7 +1,14 @@
 import { createClient } from "@/utils/supabase/server";
 
-// 1. DÉFINITION DES QUOTAS
-export const QUOTAS = {
+// --- 1. DÉFINITION STRICTE DES QUOTAS ---
+type SubscriptionTier = "free" | "start" | "pro";
+
+type QuotaLimits = {
+  clients: number;
+  active_orders: number;
+};
+
+export const QUOTAS: Record<SubscriptionTier, QuotaLimits> = {
   free: {
     clients: 10,
     active_orders: 3,
@@ -16,10 +23,8 @@ export const QUOTAS = {
   },
 };
 
-type SubscriptionTier = "free" | "start" | "pro";
-
 /**
- * Récupère le niveau d'abonnement actuel
+ * Récupère le niveau d'abonnement actuel en vérifiant l'essai gratuit ET l'abonnement
  */
 export async function getSubscriptionTier(): Promise<SubscriptionTier> {
   const supabase = await createClient();
@@ -31,29 +36,42 @@ export async function getSubscriptionTier(): Promise<SubscriptionTier> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("subscription_tier, subscription_status")
+    .select("subscription_tier, subscription_status, created_at") // 👈 Ajout de created_at
     .eq("id", user.id)
     .single();
 
   if (!profile) return "free";
 
-  // 🔥 RÈGLE D'OR PLG : Trialing = PRO
-  if (profile.subscription_status === "trialing") {
-    return "pro";
+  // 1. RÈGLE D'OR PAYANTE : Si l'abonnement est actif via Stripe / Kkiapay
+  if (
+    profile.subscription_status === "active" ||
+    profile.subscription_status === "pro"
+  ) {
+    return (profile.subscription_tier as SubscriptionTier) || "pro";
   }
 
-  // Si l'abonnement est actif
-  if (profile.subscription_status === "active") {
-    return (profile.subscription_tier as SubscriptionTier) || "free";
+  // 2. 🔥 CORRECTION CRITIQUE PLG : Calcul de l'essai gratuit de 60 jours côté SERVEUR
+  // Même si le statut n'est pas "active", on vérifie si l'utilisateur vient de s'inscrire
+  if (profile.created_at) {
+    const createdAt = new Date(profile.created_at);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - createdAt.getTime());
+    const daysUsed = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    if (daysUsed <= 60) {
+      // Pendant la période d'essai, on offre la puissance maximale pour créer la dépendance au produit (Product-Led Growth)
+      return "pro";
+    }
   }
 
+  // 3. Essai terminé et pas d'abonnement payé -> Rétrogradation au plan gratuit
   return "free";
 }
 
 /**
- * VÉRIFICATION 1 : Ajout Client
+ * VÉRIFICATION 1 : Autorisation d'ajouter un Client
  */
-export async function canAddClient() {
+export async function canAddClient(): Promise<boolean> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -63,7 +81,7 @@ export async function canAddClient() {
 
   const tier = await getSubscriptionTier();
 
-  // Si Pro, pas de limite
+  // Si Pro (ou en période d'essai), pas de limite
   if (tier === "pro") return true;
 
   const { count } = await supabase
@@ -77,9 +95,9 @@ export async function canAddClient() {
 }
 
 /**
- * VÉRIFICATION 2 : Création Commande
+ * VÉRIFICATION 2 : Autorisation de créer une Commande
  */
-export async function canCreateOrder() {
+export async function canCreateOrder(): Promise<boolean> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -91,14 +109,13 @@ export async function canCreateOrder() {
 
   if (tier === "pro") return true;
 
-  // ⚠️ CORRECTION ICI : On utilise les statuts français de ton App
-  // On compte ce qui est EN COURS (donc pas 'termine' et pas 'annule')
+  // On compte ce qui est EN COURS (donc ni 'termine', ni 'annule')
   const { count } = await supabase
     .from("orders")
     .select("*", { count: "exact", head: true })
     .eq("user_id", user.id)
-    .neq("status", "termine") // <--- Harmonisé avec le Frontend
-    .neq("status", "annule"); // <--- Harmonisé avec le Frontend
+    .neq("status", "termine")
+    .neq("status", "annule");
 
   const limit = QUOTAS[tier].active_orders;
 
@@ -106,7 +123,7 @@ export async function canCreateOrder() {
 }
 
 /**
- * STATISTIQUES D'USAGE (Pour le Dashboard)
+ * STATISTIQUES D'USAGE (Pour afficher les barres de progression sur le Dashboard)
  */
 export async function getUsageStats() {
   const supabase = await createClient();
@@ -118,24 +135,26 @@ export async function getUsageStats() {
 
   const tier = await getSubscriptionTier();
 
-  const { count: clientCount } = await supabase
-    .from("clients")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", user.id);
-
-  const { count: orderCount } = await supabase
-    .from("orders")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .neq("status", "termine") // <--- Harmonisé
-    .neq("status", "annule"); // <--- Harmonisé
+  // Requêtes parallèles pour des performances optimales sur le Dashboard
+  const [clientsRes, ordersRes] = await Promise.all([
+    supabase
+      .from("clients")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id),
+    supabase
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .neq("status", "termine")
+      .neq("status", "annule"),
+  ]);
 
   return {
     tier,
     limits: QUOTAS[tier],
     usage: {
-      clients: clientCount || 0,
-      active_orders: orderCount || 0,
+      clients: clientsRes.count || 0,
+      active_orders: ordersRes.count || 0,
     },
   };
 }

@@ -4,10 +4,20 @@ import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
+// 🛡️ SÉCURITÉ : Fail-Fast pour le compte Admin Supabase
+if (
+  !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  !process.env.SUPABASE_SERVICE_ROLE_KEY
+) {
+  throw new Error(
+    "🔥 ERREUR CRITIQUE : Clés Supabase Admin manquantes pour le Webhook Kkiapay.",
+  );
+}
+
 // Initialisation Supabase ADMIN
 const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
 );
 
 export async function POST(request: Request) {
@@ -16,9 +26,23 @@ export async function POST(request: Request) {
     const signature = request.headers.get("x-kkiapay-signature");
     const secret = process.env.KKIAPAY_SECRET_HASH;
 
-    if (!secret || !signature) {
-      console.error("❌ ERREUR : Configuration ou Signature manquante");
-      return NextResponse.json({ message: "Server Error" }, { status: 500 });
+    // 🛡️ SÉCURITÉ : Fail-Fast pour Kkiapay
+    if (!secret) {
+      console.error("🔥 ERREUR CRITIQUE : KKIAPAY_SECRET_HASH manquant.");
+      return NextResponse.json(
+        { message: "Server Configuration Error" },
+        { status: 500 },
+      );
+    }
+
+    if (!signature) {
+      console.error(
+        "❌ ERREUR : Signature Kkiapay manquante dans les headers.",
+      );
+      return NextResponse.json(
+        { message: "Missing Signature" },
+        { status: 400 },
+      );
     }
 
     // 2. Lecture du corps brut
@@ -30,13 +54,14 @@ export async function POST(request: Request) {
       .update(rawBody)
       .digest("hex");
 
-    // On utilise Buffer et timingSafeEqual pour une comparaison sécurisée
-    const isSignatureValid = crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(computedSignature),
-    );
+    const bufferSignature = Buffer.from(signature);
+    const bufferComputed = Buffer.from(computedSignature);
 
-    if (!isSignatureValid) {
+    // 🛡️ FIX SÉCURITÉ : On vérifie la longueur AVANT timingSafeEqual pour éviter un crash Node.js
+    if (
+      bufferSignature.length !== bufferComputed.length ||
+      !crypto.timingSafeEqual(bufferSignature, bufferComputed)
+    ) {
       console.error("⛔ ALERTE SÉCURITÉ : Signature Kkiapay invalide !");
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
@@ -47,8 +72,12 @@ export async function POST(request: Request) {
 
     const { status, transactionId, metadata } = body;
 
+    // Si la transaction échoue, on retourne 200 avec un message pour dire à Kkiapay d'arrêter de réessayer
     if (status !== "SUCCESS") {
-      return NextResponse.json({ message: "Transaction non réussie" });
+      return NextResponse.json({
+        message: "Transaction non réussie",
+        received: true,
+      });
     }
 
     // 5. Extraction robuste du UserID
@@ -76,10 +105,12 @@ export async function POST(request: Request) {
     const { error } = await supabaseAdmin
       .from("profiles")
       .update({
-        subscription_status: "kkiapay_active", // Statut spécifique
-        subscription_tier: "pro", // Vraie colonne (remplace plan_id)
-        trial_end: endDate.toISOString(), // Vraie colonne (remplace current_period_end)
-        stripe_customer_id: `kkiapay_${transactionId}`,
+        // 🔥 FIX BUSINESS : On utilise "active" pour que lib/check-limits.ts le déverrouille !
+        subscription_status: "active",
+        subscription_tier: "pro",
+        trial_end: endDate.toISOString(),
+        stripe_customer_id: `kkiapay_${transactionId}`, // Tag permettant de reconnaître la source
+        stripe_subscription_id: `mm_${transactionId}`, // Indique un abonnement manuel sans auto-renouvellement
       })
       .eq("id", userId);
 
