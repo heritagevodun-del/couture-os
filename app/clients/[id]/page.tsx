@@ -8,7 +8,6 @@ import {
   Trash2,
   FileText,
   MessageCircle,
-  CheckCircle2,
   Edit2,
   X,
   ArrowLeft,
@@ -84,7 +83,7 @@ export default function ClientDetails({
     notes: "",
   });
 
-  // --- 1. CHARGEMENT DES DONNÉES ---
+  // --- 1. CHARGEMENT DES DONNÉES (Optimisé en parallèle) ---
   useEffect(() => {
     const fetchData = async () => {
       if (!id) return;
@@ -98,54 +97,48 @@ export default function ClientDetails({
         return;
       }
 
-      // A. Profil Boutique
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
+      // 🛡️ PERF : On exécute les requêtes simultanément
+      const [profileRes, clientRes, ordersRes] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", user.id).single(),
+        supabase
+          .from("clients")
+          .select("*")
+          .eq("id", id)
+          .eq("user_id", user.id)
+          .single(),
+        supabase
+          .from("orders")
+          .select("*")
+          .eq("client_id", id)
+          .order("created_at", { ascending: false }),
+      ]);
 
-      if (profile) {
+      if (profileRes.data) {
         setShopProfile({
-          shop_name: profile.shop_name || "Mon Atelier",
-          shop_address: profile.shop_address || "",
-          shop_phone: profile.shop_phone || "",
+          shop_name: profileRes.data.shop_name || "Mon Atelier",
+          shop_address: profileRes.data.shop_address || "",
+          shop_phone: profileRes.data.shop_phone || "",
           email: user.email || "",
-          currency: profile.currency || "FCFA",
+          currency: profileRes.data.currency || "FCFA",
         });
       }
 
-      // B. Client
-      const { data: clientData, error: clientError } = await supabase
-        .from("clients")
-        .select("*")
-        .eq("id", id)
-        .eq("user_id", user.id)
-        .single();
-
-      if (clientError || !clientData) {
-        console.error("Erreur client:", clientError);
+      if (clientRes.error || !clientRes.data) {
+        console.error("Erreur client:", clientRes.error);
         setLoading(false);
         return;
       }
 
-      setClient(clientData);
-      setTempMeasurements(clientData.measurements || {});
+      setClient(clientRes.data);
+      setTempMeasurements(clientRes.data.measurements || {});
       setTempClientData({
-        full_name: clientData.full_name,
-        phone: clientData.phone,
-        city: clientData.city,
-        notes: clientData.notes || "",
+        full_name: clientRes.data.full_name,
+        phone: clientRes.data.phone || "",
+        city: clientRes.data.city || "",
+        notes: clientRes.data.notes || "",
       });
 
-      // C. Commandes
-      const { data: ordersData } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("client_id", id)
-        .order("created_at", { ascending: false });
-
-      setOrders(ordersData || []);
+      setOrders(ordersRes.data || []);
       setLoading(false);
     };
 
@@ -160,25 +153,20 @@ export default function ClientDetails({
     MEASUREMENT_TEMPLATES.find((t) => t.id === currentTemplateId) ||
     MEASUREMENT_TEMPLATES[0];
 
-  // ✅ CORRECTION AFFICHAGE CUSTOM
   const getLabelForField = (key: string) => {
     if (key.startsWith("_") && key !== "_custom_fields_def") return null;
 
-    // 1. Chercher dans le template standard
     const field = currentTemplate.fields.find((f) => f.id === key);
     if (field) return field.label;
 
-    // 2. Chercher dans les définitions custom enregistrées
     const customDefs: CustomFieldDef[] =
       client?.measurements?._custom_fields_def || [];
     const customField = customDefs.find((f) => f.id === key);
     if (customField) return customField.label;
 
-    // 3. Fallback
     return key.replace(/_/g, " ").replace("custom", "Mesure");
   };
 
-  // Mise à jour infos client
   const handleUpdateClient = async () => {
     if (!client) return;
     const { error } = await supabase
@@ -199,7 +187,6 @@ export default function ClientDetails({
     }
   };
 
-  // Sauvegarde Mesures
   const handleSaveMeasurements = async () => {
     if (!client) return;
     const { error } = await supabase
@@ -212,7 +199,12 @@ export default function ClientDetails({
     }
   };
 
-  // Suppression Client
+  // 🛡️ UX : Gestion de la virgule sur mobile pendant la modification
+  const handleMeasureChange = (key: string, rawValue: string) => {
+    const sanitizedValue = rawValue.replace(",", ".");
+    setTempMeasurements((prev) => ({ ...prev, [key]: sanitizedValue }));
+  };
+
   const handleDeleteClient = async () => {
     if (!client) return;
     if (
@@ -237,13 +229,11 @@ export default function ClientDetails({
     }
   };
 
-  // ✅ Changement de statut de commande
   const handleUpdateStatus = async (orderId: string, newStatus: string) => {
     const { error } = await supabase
       .from("orders")
       .update({ status: newStatus })
       .eq("id", orderId);
-
     if (!error) {
       setOrders((prev) =>
         prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)),
@@ -251,17 +241,14 @@ export default function ClientDetails({
     }
   };
 
-  // Génération Facture
   const handleDownloadInvoice = (e: React.MouseEvent, order: Order) => {
     e.stopPropagation();
     if (!client) return;
 
-    const sortedOrders = [...orders].sort(
-      (a, b) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    );
-    const sequentialNumber =
-      sortedOrders.findIndex((o) => o.id === order.id) + 1;
+    // 🛡️ CORRECTION TS : On génère un numéro à 6 chiffres unique basé sur la date de création.
+    // Cela garantit un ID stable, unique, ET qui respecte le type "number" attendu par invoiceGenerator
+    const numericOrderNumber =
+      Math.floor(new Date(order.created_at).getTime() / 1000) % 1000000;
 
     const currentShop = shopProfile || {
       shop_name: "Votre Atelier",
@@ -293,25 +280,25 @@ export default function ClientDetails({
         price: order.price,
         advance: order.advance || 0,
         status: order.status,
-        client_order_number: sequentialNumber,
+        client_order_number: numericOrderNumber, // ✅ Parfaitement typé !
       },
     });
   };
 
-  // WhatsApp
   const sendWhatsApp = (type: "reminder" | "ready", order: Order) => {
-    if (!client?.phone) return alert("Pas de numéro de téléphone.");
+    if (!client?.phone)
+      return alert("Ce client n'a pas de numéro de téléphone enregistré.");
     const shop = shopProfile?.shop_name || "L'Atelier";
-    const cleanPhone = client.phone.replace(/[^0-9]/g, "");
+    const cleanPhone = client.phone.replace(/[^0-9+]/g, "");
 
     const reste = order.price - (order.advance || 0);
     const devise = shopProfile?.currency || "FCFA";
     let msg = "";
 
     if (type === "reminder") {
-      msg = `Bonjour ${client.full_name} 👋, c'est ${shop}. Petit rappel pour votre commande "${order.title}". Reste à payer : ${reste.toLocaleString()} ${devise}. Merci !`;
+      msg = `Bonjour ${client.full_name} 👋, c'est ${shop}. Petit rappel pour votre commande "${order.title}". Il reste ${reste.toLocaleString("fr-FR")} ${devise} à régler. Merci !`;
     } else {
-      msg = `Bonne nouvelle ${client.full_name} ! 🎉 Votre commande "${order.title}" est prête. Reste à payer : ${reste.toLocaleString()} ${devise}. À très vite !`;
+      msg = `Bonne nouvelle ${client.full_name} ! 🎉 Votre commande "${order.title}" est prête à l'atelier. Reste à payer : ${reste.toLocaleString("fr-FR")} ${devise}. À très vite !`;
     }
 
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
@@ -320,138 +307,152 @@ export default function ClientDetails({
 
   if (loading)
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950">
-        <Loader2 className="animate-spin text-gray-400" size={40} />
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-[#F8F9FA] dark:bg-[#050505]">
+        <Loader2 className="animate-spin text-[#D4AF37] mb-4" size={40} />
+        <p className="text-gray-400 font-serif text-sm">
+          Ouverture du dossier client...
+        </p>
       </div>
     );
 
   if (!client)
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-neutral-950 text-gray-500 gap-4">
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-[#F8F9FA] dark:bg-[#050505] text-gray-500 gap-4">
         <p>Client introuvable ou supprimé.</p>
-        <Link href="/clients" className="text-black dark:text-white underline">
-          Retour aux clients
+        <Link
+          href="/clients"
+          className="text-[#D4AF37] font-bold hover:underline"
+        >
+          Retour au carnet d&apos;adresses
         </Link>
       </div>
     );
 
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-neutral-950 pb-24 transition-colors duration-300">
+    <main className="min-h-[100dvh] bg-[#F8F9FA] dark:bg-[#050505] pb-24 transition-colors duration-300 font-sans selection:bg-[#D4AF37]/30">
       {/* HEADER NAV STICKY */}
-      <div className="bg-white dark:bg-neutral-900 px-4 py-3 md:px-6 md:py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 z-20 shadow-sm md:shadow-none">
+      <div className="bg-white/80 dark:bg-[#111]/80 backdrop-blur-md px-4 py-4 md:px-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 z-40 transition-colors">
         <Link
           href="/clients"
-          className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white flex items-center gap-2 text-sm font-bold transition-colors"
+          className="text-gray-500 dark:text-gray-400 hover:text-[#D4AF37] dark:hover:text-[#D4AF37] flex items-center gap-2 text-xs font-bold uppercase tracking-wider transition-colors"
         >
-          <ArrowLeft size={18} />{" "}
-          <span className="hidden md:inline">Retour liste</span>
+          <ArrowLeft size={16} />{" "}
+          <span className="hidden sm:inline">Mes Clients</span>
         </Link>
         <div className="flex gap-2">
           <button
             onClick={() => setIsEditingClient(true)}
-            className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-colors"
-            title="Modifier"
-            // ✅ FIX A11Y : Label explicite
-            aria-label="Modifier les informations client"
+            className="p-2 bg-gray-100 dark:bg-black rounded-xl hover:bg-[#D4AF37] hover:text-black dark:hover:bg-[#D4AF37] dark:hover:text-black transition-all border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400"
+            aria-label="Modifier les informations du client"
           >
-            <Edit2 size={18} />
+            <Edit2 size={16} />
           </button>
           <button
             onClick={handleDeleteClient}
-            className="p-2 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-colors"
-            title="Supprimer"
-            // ✅ FIX A11Y : Label explicite
+            className="p-2 bg-red-50 dark:bg-red-950/30 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all border border-red-100 dark:border-red-900/30"
             aria-label="Supprimer le client"
           >
-            <Trash2 size={18} />
+            <Trash2 size={16} />
           </button>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
-        {/* CARTE IDENTITÉ */}
-        <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 flex flex-col items-center text-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-gray-50 to-transparent dark:from-gray-800/50 dark:to-transparent -z-0" />
+      <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        {/* --- CARTE IDENTITÉ VIP --- */}
+        <div className="bg-white dark:bg-[#111] rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 md:p-8 flex flex-col items-center text-center relative overflow-hidden group">
+          <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-[#D4AF37]/5 to-transparent dark:from-[#D4AF37]/10 dark:to-transparent pointer-events-none" />
 
-          <div className="relative z-10 w-24 h-24 bg-black dark:bg-white text-white dark:text-black rounded-full flex items-center justify-center text-3xl font-bold mb-4 shadow-xl ring-4 ring-white dark:ring-neutral-900">
+          <div className="relative z-10 w-24 h-24 bg-black dark:bg-black text-[#D4AF37] rounded-full flex items-center justify-center text-4xl font-black mb-5 shadow-2xl ring-4 ring-white dark:ring-[#111] border-2 border-[#D4AF37]/30 group-hover:scale-105 transition-transform duration-500">
             {client.full_name.charAt(0).toUpperCase()}
           </div>
 
-          <h1 className="relative z-10 text-2xl font-bold text-gray-900 dark:text-white mb-1">
+          <h1 className="relative z-10 text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-2 font-serif tracking-tight">
             {client.full_name}
           </h1>
 
-          <div className="relative z-10 flex flex-wrap justify-center items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-6">
-            <span className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">
-              <Phone size={12} /> {client.phone}
-            </span>
+          <div className="relative z-10 flex flex-wrap justify-center items-center gap-3 text-sm text-gray-500 dark:text-gray-400 mb-8 font-medium">
+            {client.phone && (
+              <span className="flex items-center gap-1.5 bg-gray-50 dark:bg-black border border-gray-100 dark:border-gray-800 px-4 py-1.5 rounded-full">
+                <Phone size={14} className="text-[#D4AF37]" /> {client.phone}
+              </span>
+            )}
             {client.city && (
-              <span className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">
-                <MapPin size={12} /> {client.city}
+              <span className="flex items-center gap-1.5 bg-gray-50 dark:bg-black border border-gray-100 dark:border-gray-800 px-4 py-1.5 rounded-full">
+                <MapPin size={14} className="text-[#D4AF37]" /> {client.city}
               </span>
             )}
           </div>
 
-          <div className="relative z-10 flex gap-3 w-full max-w-sm">
+          <div className="relative z-10 flex gap-4 w-full max-w-md">
             <a
               href={`tel:${client.phone}`}
-              className="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white py-3 rounded-xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition flex justify-center items-center gap-2"
+              className="flex-1 bg-gray-50 dark:bg-black text-gray-900 dark:text-white py-4 rounded-xl font-bold text-sm hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors flex justify-center items-center gap-2 border border-gray-200 dark:border-gray-800 shadow-sm"
             >
               <Phone size={18} /> Appeler
             </a>
             <a
-              href={`https://wa.me/${client.phone.replace(/[^0-9]/g, "")}`}
+              href={`https://wa.me/${client.phone.replace(/[^0-9+]/g, "")}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 bg-[#25D366] text-white py-3 rounded-xl font-bold text-sm hover:opacity-90 transition flex justify-center items-center gap-2 shadow-lg shadow-green-100 dark:shadow-none"
+              className="flex-1 bg-[#25D366] hover:bg-[#20b858] text-white py-4 rounded-xl font-bold text-sm transition-all flex justify-center items-center gap-2 shadow-[0_4px_14px_0_rgba(37,211,102,0.39)] hover:shadow-[0_6px_20px_rgba(37,211,102,0.23)] hover:-translate-y-0.5"
             >
               <MessageCircle size={18} /> WhatsApp
             </a>
           </div>
 
           {client.notes && (
-            <div className="relative z-10 mt-6 w-full bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-900/30 p-4 rounded-xl text-left flex gap-3">
-              <StickyNote className="text-yellow-600 shrink-0" size={20} />
-              <p className="text-sm text-gray-800 dark:text-gray-300 italic">
+            <div className="relative z-10 mt-8 w-full bg-[#D4AF37]/5 border border-[#D4AF37]/20 p-5 rounded-2xl text-left flex gap-4">
+              <StickyNote
+                className="text-[#D4AF37] shrink-0 mt-0.5"
+                size={20}
+              />
+              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                 {client.notes}
               </p>
             </div>
           )}
         </div>
 
-        {/* SECTION MESURES */}
-        <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
-          <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/30">
-            <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
-              <Ruler size={16} /> Mesures ({currentTemplate.label})
+        {/* --- SECTION MESURES --- */}
+        <div className="bg-white dark:bg-[#111] rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden relative">
+          <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none">
+            <Ruler size={150} className="rotate-45" />
+          </div>
+
+          <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 relative z-10">
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-[0.1em] flex items-center gap-2">
+              <Ruler size={18} className="text-[#D4AF37]" /> Mensurations{" "}
+              <span className="text-gray-400 font-normal">
+                ({currentTemplate.label})
+              </span>
             </h2>
             {!isEditingMeasurements ? (
               <button
                 onClick={() => setIsEditingMeasurements(true)}
-                className="text-xs font-bold text-black dark:text-white hover:underline bg-white dark:bg-black px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm"
+                className="text-xs font-bold text-gray-900 dark:text-white bg-gray-50 dark:bg-black px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-[#D4AF37] dark:hover:border-[#D4AF37] transition-all w-full sm:w-auto text-center"
               >
-                Modifier
+                Mettre à jour
               </button>
             ) : (
-              <div className="flex gap-2">
+              <div className="flex gap-2 w-full sm:w-auto">
                 <button
                   onClick={() => setIsEditingMeasurements(false)}
-                  className="text-xs font-bold text-gray-500 hover:text-black px-3 py-1.5"
+                  className="flex-1 sm:flex-none text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:text-black dark:hover:text-white px-4 py-2.5 rounded-xl transition-colors"
                 >
                   Annuler
                 </button>
                 <button
                   onClick={handleSaveMeasurements}
-                  className="text-xs font-bold text-white bg-black dark:bg-white dark:text-black px-3 py-1.5 rounded-lg shadow-sm"
+                  className="flex-1 sm:flex-none text-xs font-bold text-black bg-[#D4AF37] hover:bg-[#b5952f] px-6 py-2.5 rounded-xl shadow-md transition-colors"
                 >
-                  Sauvegarder
+                  Enregistrer
                 </button>
               </div>
             )}
           </div>
 
-          <div className="p-6">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="p-6 md:p-8 relative z-10">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {Object.entries(tempMeasurements).map(([key, value]) => {
                 if (key.startsWith("_") && key !== "_custom_fields_def")
                   return null;
@@ -463,30 +464,29 @@ export default function ClientDetails({
                 return (
                   <div
                     key={key}
-                    className="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-100 dark:border-gray-800"
+                    className="bg-gray-50 dark:bg-black p-3.5 rounded-2xl border border-gray-100 dark:border-gray-800 focus-within:ring-2 focus-within:ring-[#D4AF37]/50 transition-all group"
                   >
-                    <span className="block text-[10px] uppercase font-bold text-gray-400 mb-1 truncate">
+                    <span
+                      className="block text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 mb-1.5 truncate group-focus-within:text-[#D4AF37] transition-colors"
+                      title={label}
+                    >
                       {label}
                     </span>
                     {isEditingMeasurements ? (
                       <input
-                        type="number"
+                        type="text"
                         inputMode="decimal"
-                        className="w-full bg-transparent border-b border-gray-300 dark:border-gray-600 focus:border-black dark:focus:border-white outline-none font-bold text-gray-900 dark:text-white p-0 text-lg"
+                        className="w-full bg-transparent border-none outline-none font-black text-gray-900 dark:text-white p-0 text-xl md:text-2xl placeholder-gray-300"
                         value={value}
                         onChange={(e) =>
-                          setTempMeasurements((prev) => ({
-                            ...prev,
-                            [key]: e.target.value,
-                          }))
+                          handleMeasureChange(key, e.target.value)
                         }
-                        // ✅ FIX A11Y : Label pour l'input
                         aria-label={`Modifier ${label}`}
                       />
                     ) : (
-                      <span className="text-lg font-bold text-gray-900 dark:text-white">
-                        {value}{" "}
-                        <span className="text-xs font-normal text-gray-400">
+                      <span className="text-xl md:text-2xl font-black text-gray-900 dark:text-white tracking-tight block">
+                        {value || "--"}{" "}
+                        <span className="text-xs font-medium text-gray-400 ml-0.5">
                           cm
                         </span>
                       </span>
@@ -495,122 +495,142 @@ export default function ClientDetails({
                 );
               })}
             </div>
+            {Object.keys(tempMeasurements).length === 0 && (
+              <p className="text-center text-sm text-gray-400 italic py-4">
+                Aucune mesure enregistrée pour le moment.
+              </p>
+            )}
           </div>
         </div>
 
-        {/* SECTION COMMANDES */}
+        {/* --- SECTION COMMANDES --- */}
         <div>
-          <div className="flex items-center justify-between mb-4 px-1">
-            <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
-              <ShoppingBag size={16} /> Historique Commandes
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 px-2 gap-4">
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-[0.1em] flex items-center gap-2">
+              <ShoppingBag size={18} className="text-[#D4AF37]" /> Historique (
+              {orders.length})
             </h2>
             <Link
               href={`/clients/${id}/new-order`}
-              className="flex items-center gap-1 bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-xl text-xs font-bold hover:scale-[1.02] transition-transform shadow-lg shadow-gray-200 dark:shadow-none"
+              className="flex justify-center items-center gap-2 bg-black dark:bg-white text-white dark:text-black px-5 py-3 rounded-xl text-sm font-bold hover:scale-[1.02] active:scale-95 transition-all shadow-md w-full sm:w-auto"
             >
-              <Plus size={14} /> Créer
+              <Plus size={16} /> Créer une commande
             </Link>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             {orders.length === 0 ? (
-              <div className="text-center py-12 border border-dashed border-gray-200 dark:border-gray-800 rounded-2xl text-gray-400 text-sm bg-gray-50 dark:bg-gray-900/50">
-                <ShoppingBag size={32} className="mx-auto mb-2 opacity-20" />
-                Aucune commande pour ce client.
+              <div className="text-center py-16 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-3xl bg-white dark:bg-[#111]">
+                <ShoppingBag
+                  size={40}
+                  className="mx-auto mb-3 text-gray-300 dark:text-gray-700"
+                  strokeWidth={1.5}
+                />
+                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">
+                  Ce client n&apos;a pas encore passé de commande.
+                </p>
               </div>
             ) : (
               orders.map((order) => {
                 const reste = order.price - (order.advance || 0);
+                const isPaid = reste <= 0;
+
                 return (
                   <div
                     key={order.id}
-                    className="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-3 transition hover:shadow-md"
+                    className="bg-white dark:bg-[#111] p-5 md:p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col gap-4 hover:shadow-md transition-shadow group"
                   >
-                    {/* Header Commande */}
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="font-bold text-gray-900 dark:text-white text-base">
+                    <div className="flex justify-between items-start gap-4">
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-gray-900 dark:text-white text-lg truncate group-hover:text-[#D4AF37] transition-colors">
                           {order.title}
                         </h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-medium bg-gray-50 dark:bg-black inline-block px-2 py-1 rounded-md border border-gray-100 dark:border-gray-800">
                           Livraison :{" "}
-                          <span className="font-medium">
-                            {new Date(order.deadline).toLocaleDateString()}
-                          </span>
+                          {new Date(order.deadline).toLocaleDateString(
+                            "fr-FR",
+                            {
+                              weekday: "short",
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            },
+                          )}
                         </p>
                       </div>
-                      <div className="text-right">
-                        <span className="font-bold text-gray-900 dark:text-white block text-lg">
-                          {order.price.toLocaleString()}{" "}
-                          <span className="text-sm font-normal text-gray-500">
+
+                      <div className="text-right shrink-0">
+                        <span className="font-black text-gray-900 dark:text-white block text-xl tracking-tight">
+                          {new Intl.NumberFormat("fr-FR").format(order.price)}{" "}
+                          <span className="text-xs font-bold text-gray-400 uppercase">
                             {shopProfile?.currency}
                           </span>
                         </span>
-                        {/* Étiquette Paiement */}
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${reste > 0 ? "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400" : "bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400"}`}
+                          className={`inline-block mt-1.5 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${
+                            isPaid
+                              ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border border-green-200 dark:border-green-800/50"
+                              : "bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400 border border-red-100 dark:border-red-900/50"
+                          }`}
                         >
-                          {reste > 0
-                            ? `Reste: ${reste.toLocaleString()}`
-                            : "Payé ✔"}
+                          {isPaid
+                            ? "Payé ✔"
+                            : `Reste: ${new Intl.NumberFormat("fr-FR").format(reste)}`}
                         </span>
                       </div>
                     </div>
 
-                    {/* Footer Actions */}
-                    <div className="flex flex-wrap items-center justify-between pt-3 border-t border-gray-50 dark:border-gray-800 gap-2">
-                      {/* ✅ SÉLECTEUR DE STATUT */}
+                    <div className="flex flex-wrap items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-800 gap-3 mt-1">
+                      {/* SÉLECTEUR DE STATUT DE PRODUCTION */}
                       <div className="relative">
                         <select
                           value={order.status}
                           onChange={(e) =>
                             handleUpdateStatus(order.id, e.target.value)
                           }
-                          // ✅ FIX A11Y : Label pour le select
                           aria-label={`Statut de la commande ${order.title}`}
-                          className={`appearance-none pl-3 pr-8 py-1.5 rounded-lg text-xs font-bold uppercase cursor-pointer border-none outline-none transition-colors ${
+                          className={`appearance-none pl-4 pr-10 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer border outline-none transition-all ${
                             order.status === "termine"
-                              ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                              ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-900/50"
                               : order.status === "en_cours"
-                                ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                                : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+                                ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-900/50"
+                                : "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950/30 dark:text-yellow-400 dark:border-yellow-900/50"
                           }`}
                         >
                           <option value="en_attente">En attente</option>
-                          <option value="en_cours">En cours</option>
-                          <option value="essayage">Essayage</option>
-                          <option value="termine">Terminé</option>
+                          <option value="en_cours">En production</option>
+                          <option value="essayage">Prêt pour essayage</option>
+                          <option value="termine">Terminé & Livré</option>
                         </select>
                         <ChevronDown
-                          size={12}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-50"
+                          size={14}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-50"
                         />
                       </div>
 
-                      <div className="flex gap-2">
-                        {/* Bouton Facture */}
+                      {/* BOUTONS D'ACTION (FACTURE & WHATSAPP) */}
+                      <div className="flex gap-2 w-full sm:w-auto">
                         <button
                           onClick={(e) => handleDownloadInvoice(e, order)}
-                          className="p-2 bg-gray-50 dark:bg-gray-800 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition border border-gray-100 dark:border-gray-700"
-                          title="Facture PDF"
-                          // ✅ FIX A11Y : Label
-                          aria-label="Télécharger la facture"
+                          className="flex-1 sm:flex-none flex items-center justify-center p-2.5 bg-gray-50 dark:bg-black rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition border border-gray-200 dark:border-gray-800 shadow-sm"
+                          aria-label="Télécharger le reçu PDF"
+                          title="Télécharger la Facture PDF"
                         >
-                          <FileText size={16} />
+                          <FileText size={18} />
                         </button>
 
-                        {/* Bouton WhatsApp */}
                         <button
-                          onClick={() => sendWhatsApp("ready", order)}
-                          className="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-xl hover:bg-green-100 dark:hover:bg-green-900/40 transition border border-green-100 dark:border-green-900/30 flex items-center gap-1"
-                          title="Envoyer message 'Prêt'"
-                          // ✅ FIX A11Y : Label
-                          aria-label="Envoyer un message WhatsApp"
+                          onClick={() =>
+                            sendWhatsApp(
+                              order.status === "termine" ? "ready" : "reminder",
+                              order,
+                            )
+                          }
+                          className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 p-2.5 px-4 bg-[#25D366]/10 text-[#25D366] rounded-xl hover:bg-[#25D366] hover:text-white transition-all border border-[#25D366]/20 font-bold text-xs"
+                          aria-label="Notifier par WhatsApp"
                         >
-                          <CheckCircle2 size={16} />
-                          <span className="text-xs font-bold hidden sm:inline">
-                            Prêt
-                          </span>
+                          <MessageCircle size={16} />
+                          <span className="hidden md:inline">Notifier</span>
                         </button>
                       </div>
                     </div>
@@ -622,36 +642,34 @@ export default function ClientDetails({
         </div>
       </div>
 
-      {/* MODAL EDIT CLIENT */}
+      {/* --- MODAL EDIT CLIENT --- */}
       {isEditingClient && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-neutral-900 w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-gray-100 dark:border-gray-800 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#111] w-full max-w-sm rounded-3xl p-6 md:p-8 shadow-2xl border border-gray-100 dark:border-gray-800 animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-xl dark:text-white">
-                Modifier Client
+              <h3 className="font-bold text-xl md:text-2xl dark:text-white font-serif tracking-tight">
+                Modifier le profil
               </h3>
               <button
                 onClick={() => setIsEditingClient(false)}
-                className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                // ✅ FIX A11Y : Label
+                className="p-2 rounded-full bg-gray-50 dark:bg-black hover:bg-gray-100 dark:hover:bg-gray-800 transition text-gray-500"
                 aria-label="Fermer la fenêtre"
               >
-                <X className="dark:text-white" size={24} />
+                <X size={20} />
               </button>
             </div>
-            <div className="space-y-4">
-              {/* ✅ FIX A11Y : Ajout de ID et HTMLFOR */}
+
+            <div className="space-y-5">
               <div>
                 <label
-                  className="block text-xs font-bold text-gray-500 mb-1 ml-1"
+                  className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1"
                   htmlFor="edit-fullname"
                 >
                   Nom complet
                 </label>
                 <input
                   id="edit-fullname"
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white font-medium"
-                  placeholder="Nom complet"
+                  className="w-full p-4 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:ring-2 focus:ring-[#D4AF37]/50 dark:text-white font-medium text-sm transition-all"
                   value={tempClientData.full_name}
                   onChange={(e) =>
                     setTempClientData({
@@ -661,9 +679,10 @@ export default function ClientDetails({
                   }
                 />
               </div>
+
               <div>
                 <label
-                  className="block text-xs font-bold text-gray-500 mb-1 ml-1"
+                  className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1"
                   htmlFor="edit-phone"
                 >
                   Téléphone
@@ -671,8 +690,7 @@ export default function ClientDetails({
                 <input
                   id="edit-phone"
                   type="tel"
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white font-medium"
-                  placeholder="Téléphone"
+                  className="w-full p-4 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:ring-2 focus:ring-[#D4AF37]/50 dark:text-white font-medium text-sm transition-all"
                   value={tempClientData.phone}
                   onChange={(e) =>
                     setTempClientData({
@@ -682,17 +700,17 @@ export default function ClientDetails({
                   }
                 />
               </div>
+
               <div>
                 <label
-                  className="block text-xs font-bold text-gray-500 mb-1 ml-1"
+                  className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1"
                   htmlFor="edit-city"
                 >
                   Ville
                 </label>
                 <input
                   id="edit-city"
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white dark:text-white font-medium"
-                  placeholder="Ville"
+                  className="w-full p-4 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:ring-2 focus:ring-[#D4AF37]/50 dark:text-white font-medium text-sm transition-all"
                   value={tempClientData.city}
                   onChange={(e) =>
                     setTempClientData({
@@ -702,17 +720,17 @@ export default function ClientDetails({
                   }
                 />
               </div>
+
               <div>
                 <label
-                  className="block text-xs font-bold text-gray-500 mb-1 ml-1"
+                  className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1"
                   htmlFor="edit-notes"
                 >
                   Notes
                 </label>
                 <textarea
                   id="edit-notes"
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white resize-none dark:text-white font-medium"
-                  placeholder="Notes..."
+                  className="w-full p-4 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-800 rounded-xl outline-none focus:ring-2 focus:ring-[#D4AF37]/50 resize-none dark:text-white font-medium text-sm transition-all"
                   rows={3}
                   value={tempClientData.notes}
                   onChange={(e) =>
@@ -723,11 +741,12 @@ export default function ClientDetails({
                   }
                 />
               </div>
+
               <button
                 onClick={handleUpdateClient}
-                className="w-full bg-black dark:bg-white text-white dark:text-black font-bold py-4 rounded-xl hover:scale-[1.02] transition-transform text-lg shadow-lg"
+                className="w-full bg-[#D4AF37] hover:bg-[#b5952f] text-black font-bold py-4 rounded-xl hover:-translate-y-0.5 transition-transform text-base shadow-[0_4px_14px_0_rgba(212,175,55,0.39)] mt-2"
               >
-                Enregistrer
+                Mettre à jour
               </button>
             </div>
           </div>
