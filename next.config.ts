@@ -6,15 +6,26 @@ const withPWA = withPWAInit({
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: true,
   reloadOnOnline: true,
-  // swcMinify: true, <--- J'ai supprimé cette ligne qui causait l'erreur
-  disable: process.env.NODE_ENV === "development", // Désactive la PWA en mode dev
+  disable: process.env.NODE_ENV === "development", // Désactive le Service Worker en mode dev pour éviter les bugs de cache
   workboxOptions: {
     disableDevLogs: true,
   },
 });
 
 const nextConfig: NextConfig = {
-  // Vos autres configurations Next.js iront ici si besoin
+  // 🛡️ SÉCURITÉ & PERFORMANCE : Liste blanche stricte pour les images
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        // Le wildcard '**' permet d'accepter ton URL Supabase sans avoir à la coder en dur
+        hostname: "**.supabase.co",
+        port: "",
+        // On autorise uniquement le dossier public de ton storage
+        pathname: "/storage/v1/object/public/**",
+      },
+    ],
+  },
 };
 
 export default withPWA(nextConfig);
