@@ -1,60 +1,57 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Playfair_Display } from "next/font/google"; // 👈 Ajout de la police Luxe
 import "./globals.css";
-import { ThemeProvider } from "@/components/theme-provider"; // ✅ Ajout Import
+import { ThemeProvider } from "@/components/theme-provider";
 
-const inter = Inter({ subsets: ["latin"] });
+// Configuration des polices
+const inter = Inter({ 
+  subsets: ["latin"], 
+  variable: "--font-sans" 
+});
 
-// --- 1. CONFIGURATION DU PARTAGE & PWA (Ton code original préservé) ---
+const playfair = Playfair_Display({ 
+  subsets: ["latin"], 
+  variable: "--font-serif" // 👈 Variable injectée pour le design system
+});
+
+// --- 1. CONFIGURATION DU PARTAGE & PWA ---
 export const metadata: Metadata = {
-  // URL Officielle (Très important pour le SEO Google)
   metadataBase: new URL("https://coutureos.com"),
-
-  // Titre Intelligent
   title: {
-    default: "CoutureOS - L'Application pour Couturiers Pro",
-    template: "%s | CoutureOS",
+    default: "Couture OS | L'Application pour Couturiers Pro",
+    template: "%s | Couture OS",
   },
-
-  // Description
   description:
-    "Gérez votre atelier de couture comme un pro. Clients, Mesures, Commandes et Catalogue. Disponible sur Mobile et PC.",
-
-  // Mots-clés
+    "Gérez votre atelier de couture comme un pro. Clients, Mensurations, Commandes et Factures. Disponible sur Mobile et PC.",
   keywords: [
     "Couture",
     "Atelier",
     "Gestion",
     "Mesures",
     "Styliste",
+    "Tailleur",
     "Bénin",
     "Mode",
-    "App",
+    "SaaS",
   ],
-
-  // Configuration PWA
   manifest: "/manifest.json",
-
-  // Configuration Apple
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "CoutureOS",
+    title: "Couture OS",
   },
-
-  // Apparence OpenGraph
   openGraph: {
-    title: "CoutureOS 🧵",
+    title: "Couture OS 🧵",
     description:
-      "Gérez votre atelier simplement : Mesures, Commandes et Catalogue.",
+      "Gérez votre atelier simplement : Mensurations, Commandes et Facturation en 1 clic.",
     url: "https://coutureos.com",
-    siteName: "CoutureOS",
+    siteName: "Couture OS",
     images: [
       {
         url: "/icon-512.png",
         width: 512,
         height: 512,
-        alt: "Logo CoutureOS - Gestion Atelier",
+        alt: "Logo Couture OS - Gestion Atelier",
       },
     ],
     locale: "fr_FR",
@@ -64,11 +61,11 @@ export const metadata: Metadata = {
 
 // --- 2. RÉGLAGE DU ZOOM MOBILE & COULEURS ---
 export const viewport: Viewport = {
-  themeColor: "#000000", // Noir Luxe
+  themeColor: "#050505", // 👈 Aligné exactement avec notre Noir Absolu
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false,
+  userScalable: false, // Évite que le double-tap sur mobile ne zoome l'écran (comportement App Native)
 };
 
 export default function RootLayout({
@@ -77,14 +74,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // ✅ AJOUT : suppressHydrationWarning est obligatoire pour next-themes
+    // suppressHydrationWarning est obligatoire pour next-themes
     <html lang="fr" suppressHydrationWarning>
-      <body className={inter.className}>
-        {/* ✅ AJOUT : Le Provider enveloppe toute l'app */}
+      <body className={`${inter.variable} ${playfair.variable} font-sans antialiased bg-[#050505] text-white`}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="dark" // 👈 FORÇAGE DU THÈME : Toujours en mode Luxe
+          enableSystem={false} // 👈 On ignore les préférences du téléphone du client
           disableTransitionOnChange
         >
           {children}
