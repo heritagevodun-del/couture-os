@@ -2,16 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
-/* --- 1. CONFIGURATION DE BASE (Mode Clair/Sombre) --- */
+/* --- 1. CONFIGURATION DE BASE (Design System Luxe) --- */
 @layer base {
   :root {
     --background: 255 255 255;
-    --foreground: 23 23 23; /* Neutral-900 */
+    --foreground: 17 17 17;
     --gold-primary: #D4AF37;
   }
 
   .dark {
-    --background: 10 10 10; /* Neutral-950 */
+    /* 🛡️ DESIGN SYSTEM : Alignement parfait sur le Noir Absolu (#050505) */
+    --background: 5 5 5; 
     --foreground: 255 255 255;
   }
 
@@ -19,13 +20,17 @@
   body {
     padding: 0;
     margin: 0;
-    font-family: 'Inter', sans-serif;
+    /* 🛡️ PERF/SEO : On écoute les variables injectées par Next.js (layout.tsx) */
+    font-family: var(--font-sans), system-ui, sans-serif;
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* SÉCURITÉ MOBILE */
+    
+    /* SÉCURITÉ MOBILE & FEELING APP NATIVE */
     overflow-x: hidden; 
     width: 100%;
+    /* Retire l'effet de surbrillance bleu au tap sur mobile iOS/Android */
+    -webkit-tap-highlight-color: transparent; 
   }
 
   body {
@@ -33,87 +38,52 @@
     color: rgb(var(--foreground));
   }
 
-  /* 🔥 FIX CRITIQUE : LISIBILITÉ DES INPUTS EN DARK MODE
-     Cela force tous les champs de saisie à prendre la couleur du texte
-     au lieu de rester noirs par défaut sur certains navigateurs.
-  */
+  /* LISIBILITÉ DES INPUTS */
   input, textarea, select {
     @apply text-gray-900 dark:text-white bg-transparent;
   }
   
-  /* Couleur du placeholder (texte indicatif) */
   input::placeholder, textarea::placeholder {
-    @apply text-gray-400;
+    @apply text-gray-400 dark:text-gray-500;
   }
 }
 
-/* --- 2. SCROLLBAR LUXE (Desktop) --- */
+/* --- 2. SCROLLBAR LUXE --- */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px; /* Plus fine, plus élégante */
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: #222; /* Discret par défaut */
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
-}
-
-@media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar-thumb {
-    background: #333;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #555;
-  }
+  background: var(--gold-primary); /* Touche VIP au survol ! */
 }
 
 /* --- 3. EFFETS D'INTERFACE --- */
 ::selection {
   background-color: var(--gold-primary);
-  color: white;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-in {
-  animation: fadeIn 0.4s ease-out forwards;
+  color: #000000; /* 🛡️ UX : Meilleur contraste lisibilité */
 }
 
 /* --- 4. UTILITAIRES --- */
 @layer utilities {
-  /* Scrollbar Hide : Compatible Firefox (standard) ET Chrome/Safari (webkit)
-     L'avertissement VS Code sur scrollbar-width est normal ici, on gère le fallback juste après.
-  */
+  /* Scrollbar Hide : Cross-browser compatible */
   .scrollbar-hide {
     -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;     /* Firefox + Chrome Moderne */
+    scrollbar-width: none;     /* Firefox */
   }
   .scrollbar-hide::-webkit-scrollbar {
-    display: none;             /* Chrome Ancien, Safari, Opera */
+    display: none;             /* Safari and Chrome */
   }
 
-  /* Fond Texturé Luxe */
-  .logo-bouton-bg {
-    background-image: 
-      radial-gradient(circle at 35% 35%, transparent 2px, #1a1a1a 3px), 
-      radial-gradient(circle at 65% 35%, transparent 2px, #1a1a1a 3px), 
-      radial-gradient(circle at 35% 65%, transparent 2px, #1a1a1a 3px), 
-      radial-gradient(circle at 65% 65%, transparent 2px, #1a1a1a 3px);
-  }
-  
-  .dark .logo-bouton-bg {
-    background-image: 
-      radial-gradient(circle at 35% 35%, transparent 2px, #ffffff 3px), 
-      radial-gradient(circle at 65% 35%, transparent 2px, #ffffff 3px), 
-      radial-gradient(circle at 35% 65%, transparent 2px, #ffffff 3px), 
-      radial-gradient(circle at 65% 65%, transparent 2px, #ffffff 3px);
+  /* Fond Texturé Luxe (Optionnel, à utiliser sur des cartes premium) */
+  .bg-texture-vip {
+    background-image: radial-gradient(circle at 2px 2px, rgba(212, 175, 55, 0.15) 1px, transparent 0);
+    background-size: 24px 24px;
   }
 }
