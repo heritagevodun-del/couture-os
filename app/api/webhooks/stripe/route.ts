@@ -6,7 +6,7 @@ import Stripe from "stripe";
 
 export const dynamic = "force-dynamic";
 
-// Init Supabase Admin (Pour contourner la sécurité RLS et écrire dans la DB)
+// Init Supabase Admin (Accès racine pour écriture serveur)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -20,11 +20,15 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: Request) {
   const body = await req.text();
-  const signature = (await headers()).get("Stripe-Signature") as string;
+  const signature = (await headers()).get("Stripe-Signature");
+
+  if (!signature) {
+    return new NextResponse("Missing Stripe Signature", { status: 400 });
+  }
 
   let event: Stripe.Event;
 
-  // 1. Vérification de la signature (Sécurité)
+  // 1. Vérification de la signature cryptographique
   try {
     event = stripe.webhooks.constructEvent(
       body,
@@ -37,90 +41,97 @@ export async function POST(req: Request) {
     return new NextResponse(`Webhook Error: ${errorMessage}`, { status: 400 });
   }
 
-  // 2. Gestion du Cycle de Vie de l'Abonnement
+  // 2. Gestion du Cycle de Vie
   try {
     switch (event.type) {
-      // ✅ CAS A : NOUVEL ABONNEMENT (Premier paiement ou début essai)
+      
+      // ✅ CAS A : PREMIER PAIEMENT (Création de l'abonnement)
       case "checkout.session.completed": {
-        // CORRECTION : On caste ici, car on est SÛR que c'est une Session
         const session = event.data.object as Stripe.Checkout.Session;
-
         const userId = session.metadata?.userId;
-        const planName = session.metadata?.planName; // 'start' ou 'pro'
+        const planName = session.metadata?.planName;
 
         if (!userId) {
-          console.error("⚠️ Pas de userId dans les métadonnées");
-          break;
+          console.error("⚠️ Webhook ignoré : Pas de userId dans les métadonnées");
+          return new NextResponse("OK", { status: 200 });
         }
 
-        console.log(`🎉 Nouvel abonnement pour : ${userId}`);
+        // 🛡️ SÉCURITÉ : On attache le userId au Customer Stripe pour ne jamais le perdre
+        await stripe.customers.update(session.customer as string, {
+          metadata: { userId },
+        });
 
-        await supabaseAdmin
+        // Mise à jour de la base de données Couture OS
+        const { error } = await supabaseAdmin
           .from("profiles")
           .update({
-            subscription_tier: planName,
+            subscription_tier: planName || "pro", // Fallback sécurité
             subscription_status: "active",
             stripe_customer_id: session.customer as string,
             stripe_subscription_id: session.subscription as string,
           })
           .eq("id", userId);
+
+        if (error) throw new Error(`Erreur DB (Checkout): ${error.message}`);
+        console.log(`🎉 Nouvel abonnement activé pour l'utilisateur : ${userId}`);
         break;
       }
 
-      // 💰 CAS B : PAIEMENT MENSUEL RÉUSSI (Renouvellement)
-      case "invoice.payment_succeeded": {
-        // CORRECTION : Ici, l'objet est une INVOICE, pas une Subscription
-        const invoice = event.data.object as Stripe.Invoice;
-        const customerId = invoice.customer as string;
-
-        // On s'assure que le statut reste 'active'
-        await supabaseAdmin
-          .from("profiles")
-          .update({ subscription_status: "active" })
-          .eq("stripe_customer_id", customerId);
-
-        console.log(`💰 Renouvellement réussi pour le client ${customerId}`);
-        break;
-      }
-
-      // ❌ CAS C : PAIEMENT ÉCHOUÉ (Carte expirée, fonds insuffisants)
-      case "invoice.payment_failed": {
-        // CORRECTION : Ici aussi, c'est une INVOICE
-        const invoice = event.data.object as Stripe.Invoice;
-        const customerId = invoice.customer as string;
-
-        await supabaseAdmin
-          .from("profiles")
-          .update({ subscription_status: "past_due" }) // "En retard"
-          .eq("stripe_customer_id", customerId);
-
-        console.log(`⚠️ Paiement échoué pour le client ${customerId}`);
-        break;
-      }
-
-      // 🗑️ CAS D : ABONNEMENT ANNULÉ (Fin définitive)
-      case "customer.subscription.deleted": {
-        // CORRECTION : Ici, c'est bien une SUBSCRIPTION
+      // 🔄 CAS B : MISE À JOUR ABONNEMENT (Renouvellement, changement de carte, passage au niveau supérieur)
+      case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
 
-        await supabaseAdmin
+        // Le statut Stripe correspond parfaitement aux statuts de la DB : 'active', 'past_due', 'canceled'
+        const status = subscription.status; 
+
+        // 🛡️ ANTI RACE-CONDITION : Au lieu de bloquer si l'update échoue (si l'ID n'est pas encore là),
+        // on vérifie si l'enregistrement existe.
+        const { error } = await supabaseAdmin
           .from("profiles")
           .update({
-            subscription_tier: "free", // Retour au gratuit
+            subscription_status: status,
+            stripe_subscription_id: subscription.id,
+          })
+          .eq("stripe_customer_id", customerId);
+          
+        if (error) {
+            console.error(`⚠️ Erreur DB (Update): Le client ${customerId} n'est peut-être pas encore sync.`);
+        } else {
+            console.log(`🔄 Statut mis à jour (${status}) pour le client Stripe ${customerId}`);
+        }
+        break;
+      }
+
+      // 🗑️ CAS C : ABONNEMENT ANNULÉ DÉFINITIVEMENT
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object as Stripe.Subscription;
+        const customerId = subscription.customer as string;
+
+        const { error } = await supabaseAdmin
+          .from("profiles")
+          .update({
+            subscription_tier: "free",
             subscription_status: "canceled",
             stripe_subscription_id: null,
           })
           .eq("stripe_customer_id", customerId);
 
-        console.log(`🚫 Abonnement supprimé pour le client ${customerId}`);
+        if (error) throw new Error(`Erreur DB (Delete): ${error.message}`);
+        console.log(`🚫 Abonnement résilié pour le client Stripe ${customerId}`);
         break;
       }
+
+      default:
+        // On ignore silencieusement les événements non gérés (comme invoice.created)
+        console.log(`ℹ️ Événement ignoré: ${event.type}`);
     }
   } catch (error) {
     console.error("❌ Erreur Logique Webhook:", error);
-    return new NextResponse("Erreur interne", { status: 500 });
+    // On retourne 500 pour que Stripe réessaie plus tard (Mécanisme de sécurité vitale)
+    return new NextResponse("Erreur interne du traitement", { status: 500 });
   }
 
-  return new NextResponse(null, { status: 200 });
+  // Si tout s'est bien passé, on dit "OK" à Stripe pour qu'il arrête d'envoyer la requête
+  return new NextResponse("OK", { status: 200 });
 }
