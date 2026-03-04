@@ -1,8 +1,9 @@
 "use client";
 
 import { useKKiaPay } from "kkiapay-react";
-import { Smartphone, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { Smartphone } from "lucide-react"; // Loader2 retiré
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 interface KkiapayButtonProps {
   amount: number;
@@ -19,52 +20,53 @@ export default function KkiapayButton({
 }: KkiapayButtonProps) {
   const { openKkiapayWidget, addKkiapayListener, removeKkiapayListener } =
     useKKiaPay();
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  // 🛡️ UX PRO : Gestion propre du cycle de vie React
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleSuccess = (response: any) => {
+      console.log("✅ Paiement Kkiapay réussi :", response);
+      const tid = response.transactionId || response.transaction_id;
+
+      // Redirection fluide via Next.js
+      router.push(`/dashboard?payment=kkiapay_success&tid=${tid}`);
+    };
+
+    // On attache UNIQUEMENT l'événement reconnu par le typage Kkiapay
+    addKkiapayListener("success", handleSuccess);
+
+    // On nettoie l'écouteur à la destruction du composant (1 seul argument requis)
+    return () => {
+      removeKkiapayListener("success");
+    };
+  }, [addKkiapayListener, removeKkiapayListener, router]);
 
   const handlePayment = () => {
-    setLoading(true);
-
-    openKkiapayWidget({
+    // Préparation de la configuration propre
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const widgetConfig: any = {
       amount: amount,
       api_key: process.env.NEXT_PUBLIC_KKIAPAY_PUBLIC_KEY || "",
-      sandbox: false,
+      sandbox: process.env.NODE_ENV === "development",
       email: email,
       fullname: fullName,
       phone: "",
-      theme: "#000000",
+      theme: "#D4AF37", // L'Or de Couture OS
       paymentmethod: ["momo"],
       metadata: { userId: userId, plan: "premium" },
-      // 👇 SÉCURITÉ TS : On force le typage pour accepter 'metadata'
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+    };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    addKkiapayListener("success", (response: any) => {
-      console.log("Paiement réussi :", response);
-
-      const tid = response.transactionId || response.transaction_id;
-
-      window.location.href = `/dashboard?payment=kkiapay_success&tid=${tid}`;
-
-      removeKkiapayListener("success");
-      setLoading(false);
-    });
+    openKkiapayWidget(widgetConfig);
   };
 
   return (
     <button
       onClick={handlePayment}
-      disabled={loading}
-      className="w-full mt-3 bg-[#25D366] text-white font-bold py-4 rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg"
+      className="w-full mt-3 bg-[#25D366] text-white font-bold py-4 rounded-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-[0_4px_14px_0_rgba(37,211,102,0.39)] hover:shadow-[0_6px_20px_rgba(37,211,102,0.23)]"
     >
-      {loading ? (
-        <Loader2 className="animate-spin" />
-      ) : (
-        <>
-          <Smartphone size={18} />
-          Payer par Mobile Money (MTN/Moov)
-        </>
-      )}
+      <Smartphone size={18} />
+      Payer par Mobile Money
     </button>
   );
 }
