@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 
+export const dynamic = "force-dynamic";
+
 // Initialisation Supabase ADMIN
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,90 +12,85 @@ const supabaseAdmin = createClient(
 
 export async function POST(request: Request) {
   try {
-    // 1. Récupération de la signature envoyée par Kkiapay
+    // 1. Récupération de la signature
     const signature = request.headers.get("x-kkiapay-signature");
     const secret = process.env.KKIAPAY_SECRET_HASH;
 
-    if (!secret) {
-      console.error(
-        "❌ ERREUR CONFIG : KKIAPAY_SECRET_HASH manquant dans .env",
-      );
-      return NextResponse.json(
-        { message: "Server Configuration Error" },
-        { status: 500 },
-      );
+    if (!secret || !signature) {
+      console.error("❌ ERREUR : Configuration ou Signature manquante");
+      return NextResponse.json({ message: "Server Error" }, { status: 500 });
     }
 
-    // 2. Lecture du corps brut (Raw Body) pour la vérification
+    // 2. Lecture du corps brut
     const rawBody = await request.text();
 
-    // 3. Vérification cryptographique de la signature (HMAC SHA256)
-    // On recrée la signature avec notre secret et le contenu reçu
+    // 3. Vérification cryptographique ANTI-TIMING ATTACKS
     const computedSignature = crypto
       .createHmac("sha256", secret)
       .update(rawBody)
       .digest("hex");
 
-    // Comparaison sécurisée
-    if (signature !== computedSignature) {
-      console.error("⛔ ALERTE SÉCURITÉ : Signature Webhook invalide !");
-      return NextResponse.json(
-        { message: "Forbidden: Invalid Signature" },
-        { status: 403 },
-      );
+    // On utilise Buffer et timingSafeEqual pour une comparaison sécurisée
+    const isSignatureValid = crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(computedSignature),
+    );
+
+    if (!isSignatureValid) {
+      console.error("⛔ ALERTE SÉCURITÉ : Signature Kkiapay invalide !");
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
-    // 4. Si la signature est bonne, on parse le JSON
+    // 4. Parsing du JSON
     const body = JSON.parse(rawBody);
     console.log("🔔 Webhook Kkiapay AUTHENTIFIÉ reçu");
 
     const { status, transactionId, metadata } = body;
 
-    // 5. Logique métier standard
     if (status !== "SUCCESS") {
       return NextResponse.json({ message: "Transaction non réussie" });
     }
 
-    // Gestion robuste des métadonnées (parfois string, parfois objet)
+    // 5. Extraction robuste du UserID
     let userId = metadata?.userId;
     if (!userId && typeof metadata === "string") {
       try {
-        const parsedMeta = JSON.parse(metadata);
-        userId = parsedMeta.userId;
+        userId = JSON.parse(metadata).userId;
       } catch (e) {
         console.error("Erreur parsing metadata", e);
       }
     }
 
     if (!userId) {
-      console.error("❌ Pas de User ID dans les métadonnées");
       return NextResponse.json(
         { message: "User ID manquant" },
         { status: 400 },
       );
     }
 
-    // 6. Calcul date fin (+30 jours)
+    // 6. Calcul date de fin EXACTE (+30 jours pour le Mobile Money)
     const now = new Date();
     const endDate = new Date(now.setDate(now.getDate() + 30));
 
-    // 7. Update Supabase
+    // 7. Update Supabase avec le VRAI schéma
     const { error } = await supabaseAdmin
       .from("profiles")
       .update({
-        subscription_status: "active",
-        plan_id: "premium_africa",
-        current_period_end: endDate.toISOString(),
+        subscription_status: "kkiapay_active", // Statut spécifique
+        subscription_tier: "pro", // Vraie colonne (remplace plan_id)
+        trial_end: endDate.toISOString(), // Vraie colonne (remplace current_period_end)
         stripe_customer_id: `kkiapay_${transactionId}`,
       })
       .eq("id", userId);
 
     if (error) {
       console.error("❌ Erreur update Supabase :", error);
-      return NextResponse.json({ message: "Erreur interne" }, { status: 500 });
+      return NextResponse.json({ message: "Erreur BDD" }, { status: 500 });
     }
 
-    console.log(`✅ Abonnement activé pour ${userId} (Sécurisé)`);
+    console.log(
+      `✅ Abonnement Mobile Money activé pour ${userId} jusqu'au ${endDate.toISOString()}`,
+    );
     return NextResponse.json({ received: true });
   } catch (err) {
     console.error("❌ Erreur Webhook :", err);

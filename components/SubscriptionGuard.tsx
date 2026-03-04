@@ -54,10 +54,12 @@ export default function SubscriptionGuard({
       const tier = profile.subscription_tier;
 
       // --- DÉCISION FINANCIÈRE ---
-
       // CAS 1 : Client PAYANT Actif -> ACCÈS IMMÉDIAT
-      // On vérifie le statut global (Stripe/Kkiapay) ou le niveau "pro" / "start"
-      if (status === "active" || tier === "pro" || tier === "start") {
+      // ⚠️ On exclut 'kkiapay_active' d'ici pour l'obliger à passer le test de la date !
+      if (
+        status === "active" ||
+        (tier === "pro" && status !== "kkiapay_active")
+      ) {
         setLoading(false);
         return;
       }
